@@ -13,27 +13,37 @@
 
 extern "C"
 {
-#include <png.h>
 #include <gd.h>
 #include <gdfonts.h>
 #include <httpd.h>
 #include <http_log.h>
+#ifdef APLOG_USE_MODULE
+APLOG_USE_MODULE(mapnik_wms);
+#endif 
 #include <http_protocol.h>
 #include <apr_strings.h>
 #include <apr_pools.h>
-#include <db.h>
 #include <proj_api.h>
-#include <jpeglib.h>
 }
 
 #include <mapnik/map.hpp>
 #include <mapnik/datasource_cache.hpp>
 #include <mapnik/font_engine_freetype.hpp>
 #include <mapnik/agg_renderer.hpp>
-#include <mapnik/filter_factory.hpp>
+#include <mapnik/version.hpp>
+#if MAPNIK_VERSION >= 300000
+#define image_data_32 image_rgba8
+#define image_32 image_rgba8
+#include <mapnik/image.hpp>
+#include <mapnik/image_view_any.hpp>
+#else
+#include <mapnik/graphics.hpp>
+#endif
+#include <mapnik/layer.hpp>
+#include <mapnik/expression.hpp>
 #include <mapnik/color_factory.hpp>
 #include <mapnik/image_util.hpp>
-#include <mapnik/config_error.hpp>
+#include <mapnik/image_scaling.hpp>
 #include <mapnik/load_map.hpp>
 #include <mapnik/octree.hpp>
 
@@ -45,9 +55,9 @@ extern "C"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <pthread.h>
 
 #include "logbuffer.h"
+#include "apachebuffer.h"
 
 
 extern "C" 
@@ -60,9 +70,9 @@ bool load_configured_map(server_rec *s, struct wms_cfg *cfg)
     {
         cfg->mapnik_map = new mapnik::Map();
         load_map(*((mapnik::Map *)cfg->mapnik_map), cfg->map);
-        ((mapnik::Map *) cfg->mapnik_map)->setAspectFixMode(mapnik::Map::ADJUST_CANVAS_HEIGHT);
+        ((mapnik::Map *) cfg->mapnik_map)->set_aspect_fix_mode(mapnik::Map::ADJUST_CANVAS_HEIGHT);
     }
-    catch (const mapnik::config_error & ex)
+    catch (const std::exception & ex)
     {
         ap_log_error(APLOG_MARK, APLOG_EMERG, 0, s,
              "error initializing map: %s.", ex.what());
@@ -76,35 +86,45 @@ bool load_configured_map(server_rec *s, struct wms_cfg *cfg)
 
 int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
 {
+    std::cerr << "> " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ")" << std::endl;
+
+    if (!cfg->active)
+    {
+        return OK;
+    }
+
     if (!cfg->datasource_count)
     {
+        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error" << std::endl;
+        return HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    if (!cfg->font_count)
+    {
+        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error" << std::endl;
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     for (int i=0; i<cfg->datasource_count; i++)
-        mapnik::datasource_cache::instance()->register_datasources(cfg->datasource[i]);
-
-    if (!cfg->font_count)
-    {
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
+        mapnik::datasource_cache::instance().register_datasources(cfg->datasource[i]);
 
     for (int i=0; i<cfg->font_count; i++)
-    {
         mapnik::freetype_engine::register_font(cfg->font[i]);
-    }
 
     if (!cfg->map)
     {
+        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error" << std::endl;
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     if (!cfg->url)
     {
+        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error" << std::endl;
         return HTTP_INTERNAL_SERVER_ERROR;
     }
     if (!cfg->title)
     {
+        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error" << std::endl;
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -114,43 +134,20 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
     {
         // will create map later
         std::clog << "debug mode, load map file later" << std::endl;
+        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") OK" << std::endl;
         return OK;
     }
 
     if (!load_configured_map(s, cfg))
+    {
+        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error" << std::endl;
         return HTTP_INTERNAL_SERVER_ERROR;
+    }
 
-    std::clog << "init complete" << std::endl;
+    std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") OK" << std::endl;
     return OK;
 }
 } /* extern C */
-
-
-/**
- * Callback for libpng functions.
- */
-void user_flush_data(png_structp png_ptr)
-{
-    /* no-op */
-}
-
-/**
- * Used as a data sink for libpng functions. Sends PNG data to Apache.
- */
-void user_write_data(png_structp png_ptr,
-               png_bytep data, png_size_t length)
-{
-    request_rec *r = (request_rec *) png_get_io_ptr(png_ptr);
-    unsigned int offset = 0;
-    while(1)
-    {
-        int written = ap_rwrite(data + offset, length, r);
-        /* FIXME if this should somehow constantly return 0 we'll loop forever. */
-        if (written < 0) return;
-        if (written + offset == length) return;
-        offset += written;
-    }
-}
 
 /**
  * Used as a data sink for libgd functions. Sends PNG data to Apache.
@@ -159,58 +156,6 @@ static int gd_png_sink(void *ctx, const char *data, int length)
 {
     request_rec *r = (request_rec *) ctx;
     return ap_rwrite(data, length, r);
-}
-
-/** 
- * Callbacks for jpeg library
- */
-typedef struct
-{
-     struct jpeg_destination_mgr pub;
-     request_rec *out;
-     JOCTET * buffer;
-} dest_mgr;
-
-inline void init_destination(j_compress_ptr cinfo)
-{
-  dest_mgr * dest = reinterpret_cast<dest_mgr*>(cinfo->dest);
-  dest->buffer = (JOCTET*) (*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_IMAGE,
-                                                       BUFFER_SIZE * sizeof(JOCTET));
-  dest->pub.next_output_byte = dest->buffer;
-  dest->pub.free_in_buffer = BUFFER_SIZE;
-}
-
-inline boolean empty_output_buffer(j_compress_ptr cinfo)
-{
-    dest_mgr *dest = reinterpret_cast<dest_mgr*>(cinfo->dest);
-    unsigned int offset = 0;
-    while(1)
-    {
-        int written = ap_rwrite(dest->buffer + offset, BUFFER_SIZE, dest->out);
-        if (written < 0) return false;
-        if (written + offset == BUFFER_SIZE) break;
-        offset += written;
-    }
-    dest->pub.next_output_byte = dest->buffer;
-    dest->pub.free_in_buffer = BUFFER_SIZE;
-    return true;
-}
-
-inline void term_destination( j_compress_ptr cinfo)
-{
-    dest_mgr *dest = reinterpret_cast<dest_mgr*>(cinfo->dest);
-    size_t size  = BUFFER_SIZE - dest->pub.free_in_buffer;
-    if (size > 0)
-    {
-        unsigned int offset = 0;
-        while(1)
-        {
-            int written = ap_rwrite(dest->buffer + offset, size, dest->out);
-            if (written < 0) return;
-            if (written + offset == size) break;
-            offset += written;
-        }
-    }
 }
 
 /**
@@ -274,7 +219,7 @@ int wms_error(request_rec *r, const char *code, const char *fmt, ...)
     char *equals;
     bool end = (args == 0);
 
-    const char *exceptions = "";
+    const char *exceptions = NULL;
     const char *width = 0;
     const char *height = 0;
 
@@ -294,11 +239,12 @@ int wms_error(request_rec *r, const char *code, const char *fmt, ...)
             if (!strcasecmp(current, "WIDTH")) width = equals;
             else if (!strcasecmp(current, "HEIGHT")) height = equals;
             else if (!strcasecmp(current, "EXCEPTIONS")) exceptions = equals;
+            else if (!strcasecmp(current, "EXCEPTION")) exceptions = equals;
         }
         current = amp + 1;
     }
 
-    if (!strcmp(exceptions, "application/vnd.ogc.se_xml") || !width || !height)
+    if (!exceptions || !strcmp(exceptions, "application/vnd.ogc.se_xml") || !width || !height)
     {
         /* XML error message was requested. */
         ap_set_content_type(r, exceptions);
@@ -313,7 +259,7 @@ int wms_error(request_rec *r, const char *code, const char *fmt, ...)
         /* Image error message was requested. We use libgd to create one. */
         int n_width = atoi(width);
         int n_height = atoi(height);
-        if (n_width > 0 && n_width < 9999 && n_height > 0 && n_height < 9999)
+        if (n_width > 0 && n_width < 16384 && n_height > 0 && n_height < 16384)
         {
             gdImagePtr img = gdImageCreate(n_width, n_height);
             (void) gdImageColorAllocate(img, 255, 255, 255);
@@ -335,7 +281,7 @@ int wms_error(request_rec *r, const char *code, const char *fmt, ...)
         /* Empty image in error was requested. */
         int n_width = atoi(width);
         int n_height = atoi(height);
-        if (n_width > 0 && n_width < 9999 && n_height > 0 && n_height < 9999)
+        if (n_width > 0 && n_width < 16384 && n_height > 0 && n_height <= 16384)
         {
             gdImagePtr img = gdImageCreate(n_width, n_height);
             gdImageColorAllocate(img, 255, 255, 255);
@@ -357,221 +303,45 @@ int wms_error(request_rec *r, const char *code, const char *fmt, ...)
     return OK;
 }
 
-/* From Mapnik. */
-void reduce_8 (mapnik::ImageData32 const& in, mapnik::ImageData8 &out, mapnik::octree<mapnik::rgb> &tree)
-{
-    unsigned width = in.width();
-    unsigned height = in.height();
-    for (unsigned y = 0; y < height; ++y)
-    {
-        mapnik::ImageData32::pixel_type const * row = in.getRow(y);
-        mapnik::ImageData8::pixel_type  * row_out = out.getRow(y);
-        for (unsigned x = 0; x < width; ++x)
-        {
-            unsigned val = row[x];
-            mapnik::rgb c((val)&0xff, (val>>8)&0xff, (val>>16) & 0xff);
-            uint8_t index = tree.quantize(c);
-            row_out[x] = index;
-        }
-    }
-}
-     
-/* From Mapnik. */
-void reduce_4 (mapnik::ImageData32 const& in, mapnik::ImageData8 &out, mapnik::octree<mapnik::rgb> &tree)
-{
-    unsigned width = in.width();
-    unsigned height = in.height();
-
-    for (unsigned y = 0; y < height; ++y)
-    {
-        mapnik::ImageData32::pixel_type const * row = in.getRow(y);
-        mapnik::ImageData8::pixel_type  * row_out = out.getRow(y);
-
-        for (unsigned x = 0; x < width; ++x)
-        {
-            unsigned val = row[x];
-            mapnik::rgb c((val)&0xff, (val>>8)&0xff, (val>>16) & 0xff);
-            uint8_t index = tree.quantize(c);
-            if (x%2 >  0) index = index<<4;
-            row_out[x>>1] |= index;  
-        }
-    }
-}
-   
-/* From Mapnik. */
-void reduce_1(mapnik::ImageData32 const&, mapnik::ImageData8 & out, mapnik::octree<mapnik::rgb> &)
-{
-    out.set(0); // only one color!
-}
-
 /**
  * Generates PNG and sends it to the client.
  * Based on PNG writer code from Mapnik. 
  */
-void send_png_response(request_rec *r, mapnik::Image32 buf, unsigned int height, bool smallpng)
+void send_image_response(request_rec *r, mapnik::image_32 image, unsigned int height, std::string filetype)
 {
-    mapnik::ImageData32 image = buf.data();
-    int depth = 32;
-    std::vector<mapnik::rgb> palette;
-    mapnik::ImageData8 *reduced;
-    unsigned width = image.width();
+ 
+    apachebuffer abuf(r);
+    std::ostream str(&abuf);
 
-    if (smallpng)
+    // requested size is perfect fit
+    if (height == image.height())
     {
-        mapnik::octree<mapnik::rgb> tree(256);
-        for (unsigned y = 0; y < height; ++y)
-        {
-            mapnik::ImageData32::pixel_type const * row = image.getRow(y);
-            for (unsigned x = 0; x < width; ++x)
-            {
-                unsigned val = row[x];
-                tree.insert(mapnik::rgb((val)&0xff, (val>>8)&0xff, (val>>16) & 0xff));
-            }
-        }
-
-        tree.create_palette(palette);
-        assert(palette.size() <= 256);
-
-        if (palette.size() > 16 )
-        {
-            // >16 && <=256 colors -> write 8-bit color depth
-            reduced = new mapnik::ImageData8(width,height);   
-            reduce_8(image,*reduced,tree);
-            depth = 8;
-        }
-        else if (palette.size() == 1) 
-        {
-            // 1 color image ->  write 1-bit color depth PNG
-            reduced = new mapnik::ImageData8(width,height);   
-            width  = (int(0.125*width) + 7)&~7;
-            reduce_1(image,*reduced,tree); 
-            depth = 1;
-        }
-        else 
-        {
-            // <=16 colors -> write 4-bit color depth PNG
-            reduced = new mapnik::ImageData8(width,height);   
-            width = (int(0.5*width) + 3)&~3;
-            reduce_4(image,*reduced,tree);
-            depth = 4;
-        }
+       mapnik::save_to_stream(image, str, filetype);
+       return;
     }
 
-    png_voidp error_ptr=0;
-    png_structp png_ptr=png_create_write_struct(PNG_LIBPNG_VER_STRING, error_ptr,0, 0);
-
-    if (!png_ptr) return;
-#if defined(PNG_LIBPNG_VER) && (PNG_LIBPNG_VER >= 10200) && defined(PNG_MMX_CODE_SUPPORTED)
-      png_uint_32 mask, flags;
-      flags = png_get_asm_flags(png_ptr);
-      mask = png_get_asm_flagmask(PNG_SELECT_READ | PNG_SELECT_WRITE);
-      png_set_asm_flags(png_ptr, flags | mask);
-#endif
-    png_set_filter (png_ptr, 0, PNG_FILTER_NONE);
-    png_infop info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr)
+    // frequent bug in clients: they request just a little too much of a bounding box,
+    // yielding an image that is one scan line higher than requested. we chop it off
+    if (height == image.height() -1)
     {
-        png_destroy_write_struct(&png_ptr,(png_infopp)0);
+        mapnik::image_view<mapnik::image<mapnik::rgba8_t>> view(0, 0, 
+            image.width(), height, image);
+        mapnik::save_to_stream(view, str, filetype);
         return;
     }
-    if (setjmp(png_jmpbuf(png_ptr)))
-    {
-        png_destroy_write_struct(&png_ptr, &info_ptr);
-        return;
-    }
-    png_set_write_fn(png_ptr,
-            (void *) r, user_write_data, user_flush_data);
 
-    std::clog << "png preparation complete" << std::endl;
-    if (smallpng)
-    {
-        png_set_IHDR(png_ptr, info_ptr,width,height,depth,
-                PNG_COLOR_TYPE_PALETTE,PNG_INTERLACE_NONE,
-                PNG_COMPRESSION_TYPE_DEFAULT,PNG_FILTER_TYPE_DEFAULT);
-        png_set_PLTE(png_ptr,info_ptr,reinterpret_cast<png_color*>(&palette[0]),palette.size());
-    }
-    else
-    {
-        png_set_IHDR(png_ptr, info_ptr,width,height,8,
-                PNG_COLOR_TYPE_RGB_ALPHA,PNG_INTERLACE_NONE,
-                PNG_COMPRESSION_TYPE_DEFAULT,PNG_FILTER_TYPE_DEFAULT);
-    }
-    png_write_info(png_ptr, info_ptr);
-
-    for (unsigned int i = 0; i < height; i++)
-    {
-        // this is a primitive way of making sure that the client gets exatly the number of
-        // rows it asked for, even if the generated image should be larger or smaller. This
-        // method drops rows, or duplicates them, which makes for bad image quality if the
-        // client asked for a "wrong" size. proper rescaling would be better
-        unsigned int src_row = (int) (i * image.height() * 1.0 / height + 0.5);
-        png_write_row(png_ptr,
-            (smallpng) ? (png_bytep)reduced->getRow(src_row)
-                       : (png_bytep)image.getRow(src_row));
-    }
-
-    png_write_end(png_ptr, info_ptr);
-    png_destroy_write_struct(&png_ptr, &info_ptr);
-    if (smallpng) delete reduced;
-}
-
-/**
- * Generates JPEG and sends it to the client.
- * Based on JPEG writer code from Mapnik. 
- */
-void send_jpeg_response(request_rec *r, mapnik::Image32 buf, unsigned int height)
-{
-    mapnik::ImageData32 image = buf.data();
-    struct jpeg_compress_struct cinfo;
-    struct jpeg_error_mgr jerr;
-
-    int iwidth=image.width();
-    int iheight=image.height();
-
-    cinfo.err = jpeg_std_error(&jerr);
-    jpeg_create_compress(&cinfo);
-
-    cinfo.dest = (struct jpeg_destination_mgr *)(*cinfo.mem->alloc_small)
-        ((j_common_ptr) &cinfo, JPOOL_PERMANENT, sizeof(dest_mgr));
-    dest_mgr * dest = (dest_mgr*) cinfo.dest;
-    dest->pub.init_destination = init_destination;
-    dest->pub.empty_output_buffer = empty_output_buffer;
-    dest->pub.term_destination = term_destination;
-    dest->out = r;
-
-    //jpeg_stdio_dest(&cinfo, fp);
-    cinfo.image_width = iwidth;
-    cinfo.image_height = height;
-    cinfo.input_components = 3;
-    cinfo.in_color_space = JCS_RGB;
-    jpeg_set_defaults(&cinfo);
-    jpeg_set_quality(&cinfo, QUALITY,1);
-    jpeg_start_compress(&cinfo, 1);
-    JSAMPROW row_pointer[1];
-    JSAMPLE* row=reinterpret_cast<JSAMPLE*>( ::operator new (sizeof(JSAMPLE) * iwidth*3));
-    for (unsigned int i = 0; i < height; i++)
-    {
-        // this is a primitive way of making sure that the client gets exatly the number of
-        // rows it asked for, even if the generated image should be larger or smaller. This
-        // method drops rows, or duplicates them, which makes for bad image quality if the
-        // client asked for a "wrong" size. proper rescaling would be better
-
-        unsigned int src_row = (int) (i * iheight * 1.0 / height + 0.5);
-        const unsigned* imageRow=image.getRow(src_row);
-        int index=0;
-        for (int j=0; j<iwidth; j++)
-        {
-            row[index++]=(imageRow[j])&0xff;
-            row[index++]=(imageRow[j]>>8)&0xff;
-            row[index++]=(imageRow[j]>>16)&0xff;
-        }
-        row_pointer[0] = &row[0];
-        (void) jpeg_write_scanlines(&cinfo, row_pointer, 1);
-    }
-    ::operator delete(row);
-
-    jpeg_finish_compress(&cinfo);
-    jpeg_destroy_compress(&cinfo);
+    // all other cases: scale image
+    mapnik::image_data_32 scaled_image(image.width(), height);
+    mapnik::scale_image_agg<mapnik::image_data_32>(scaled_image, image, 
+        mapnik::SCALING_BILINEAR,       // scaling method
+        1.0,                            // x factor
+        height * 1.0 / image.height(),  // y factor
+        0.0,                            // x_off_f
+        0.0,                            // y_off_f
+        1.0,                            // filter_factor
+        0.0);                           // nodata_value
+    mapnik::save_to_stream(scaled_image, str, filetype);
+    return;
 }
 
 /**
@@ -683,7 +453,7 @@ int wms_getcap(request_rec *r)
         "  <UserDefinedSymbolization SupportSLD='0' UserLayer='0' UserStyle='0' RemoteWFS='0'/>\n", 
                 config->title, config->url, r->uri, config->url, r->uri, config->url, r->uri);
 
-    // FIXME more if this should be configurable.
+    // FIXME more of this should be configurable.
     ap_rprintf(r, 
         "  <Layer>\n"
         "    <Name>%s</Name>\n"
@@ -705,13 +475,14 @@ int wms_getcap(request_rec *r)
 
     if (config->include_sub_layers)
     {
-        /* TODO - add auto-generated set of layers from Mapnik map file, should look like so:
-
-        ap_rprintf(r, 
-        "        <Layer queryable='0' opaque='1' cascaded='0'><Name>places</Name><Title>places</Title></Layer>\n");
-
-        */
+        for (struct layer_group *lg = config->first_layer_group; lg; lg = lg->next)
+        {
+            ap_rprintf(r, 
+            "        <Layer queryable='0' opaque='%d' cascaded='0'><Name>%s</Name><Title>%s</Title></Layer>\n", 
+                lg->allow_transparency ? 1 : 0, lg->grouphandle, lg->groupname);
+        }
     }
+
     ap_rprintf(r, 
         "    </Layer>\n"
         "  </Layer>\n"
@@ -743,7 +514,21 @@ int wms_getmap(request_rec *r)
     char *amp;
     char *current = args;
     char *equals;
+
+    double scale = config->default_dpi / 90.0;
+    int quality = 85;
+
     bool end = (args == 0);
+
+    FILE *f = fopen(config->logfile, "a");
+    std::streambuf *old = NULL;
+    logbuffer *o = NULL;
+    if (f)
+    {
+        o = new logbuffer(f);
+        old = std::clog.rdbuf();
+        std::clog.rdbuf(o);
+    }
 
     /* 
      * in debug mode, the map is loaded/parsed for each request. that makes
@@ -783,6 +568,25 @@ int wms_getmap(request_rec *r)
             else if (!strcasecmp(current, "TRANSPARENT")) transparent = equals;
             else if (!strcasecmp(current, "BGCOLOR")) bgcolor = equals;
             else if (!strcasecmp(current, "EXCEPTIONS")) exceptions = equals;
+            else if (!strcasecmp(current, "DPI"))
+            {
+                scale = atof(equals) / 90.0;
+            }
+            else if (!strcasecmp(current, "QUALITY"))
+            {
+                quality = atoi(equals);
+            }
+            else if (!strcasecmp(current, "format_options"))
+            {
+                const char *dpi = strcasestr(equals, "dpi:");
+                if (dpi) scale = atof(dpi+4) / 90.0;
+                const char *qual = strcasestr(equals, "quality:");
+                if (qual) scale = atoi(qual+8);
+            }
+            else if (!strcasecmp(current, "map_resolution"))
+            {
+                scale = atof(equals) / 90.0;
+            }
         }
         current = amp + 1;
     }
@@ -795,16 +599,25 @@ int wms_getmap(request_rec *r)
     if (!styles) return wms_error(r, "MissingDimensionValue", "required parameter 'styles' not set");
     if (!format) return wms_error(r, "MissingDimensionValue", "required parameter 'format' not set");
 
+    std::clog << "layers parameter: '" << layers << "'" << std::endl;
+
     int n_width = atoi(width);
     int n_height = atoi(height);
 
-    if (n_width < 1 || n_width > 9999)
+    if ((config->max_width && n_width > config->max_width) || (n_width < config->min_width))
+        return wms_error(r, "InvalidDimensionValue", 
+            "requested width (%d) is not in range %d...%d", n_width, config->min_width, config->max_width);
+    if ((config->max_height && n_height > config->max_height) || (n_height < config->min_height))
+        return wms_error(r, "InvalidDimensionValue", 
+            "requested height (%d) is not in range %d...%d", n_height, config->min_height, config->max_height);
+
+    if (scale < 10.0/90.0 || scale > 1200.0/90.0)
     {
-        return wms_error(r, "InvalidDimensionValue", "requested width (%d) is not in range 1...9999", n_width);
+        return wms_error(r, "InvalidDimensionValue", "requested DPI is not in range 10...1200", n_height);
     }
-    if (n_height < 1 || n_height > 9999)
+    if (quality < 10 || quality > 100)
     {
-        return wms_error(r, "InvalidDimensionValue", "requested height (%d) is not in range 1...9999", n_height);
+        return wms_error(r, "InvalidDimensionValue", "requested quality is not in range 10...100", n_height);
     }
 
     double bboxvals[4];
@@ -840,58 +653,60 @@ int wms_getmap(request_rec *r)
     }
     */
 
-    /** check if given SRS is supported by configuration */
-    bool srs_ok = false;
-
-    for (int i=0; i<config->srs_count; i++)
-    {
-        if (!strcmp(config->srs[i], srs))
-        {
-            srs_ok= true;
-            break;
-        }
-    }
-    if (!srs_ok)
-    {
-        return wms_error(r, "InvalidSRS", "The given SRS ('%s') is not supported by this WMS service.", srs);
-    }
-
-    /*
-     * Layer selection is currently disabled. We always return all Mapnik
-     * layers. But this could be used to let the client select individual layers. 
 
     // split up layers into a proper C++ set for easy access
     std::set<std::string> layermap;
     dup = apr_pstrdup(r->pool, layers);
-    const char *token = strtok(dup, ",");
+    char *saveptr1;
+    const char *token = strtok_r(dup, ",", &saveptr1);
+    bool transparency_allowed = false;
     while(token)
     {
         // if one of the layers requested is the "top" layer
         // then kill layer selection and return everything.
         if  (!strcmp(token, config->top_layer_name))
         {
+            std::clog << "layermap clear, found top-level layer '" << token << "'" << std::endl;
             layermap.clear();
             break;
         }
-        layermap.insert(token);
-        token = strtok(NULL, ",");
-    }
-    */
 
-    FILE *f = fopen(config->logfile, "a");
-    std::streambuf *old = NULL;
-    logbuffer *o = NULL;
-    if (f)
-    {
-        o = new logbuffer(f);
-        old = std::clog.rdbuf();
-        std::clog.rdbuf(o);
-    }
+        // if the layer refers to a layer group handle,
+        // add all members of that layer group
+        transparency_allowed = true;
+	std::clog << "layermap handle token '" << token << "'" << std::endl;
+        for (struct layer_group *lg = config->first_layer_group; lg; lg = lg->next)
+        {
+            if (!strcmp(token, lg->grouphandle))
+            {
+	        std::clog << "-> found group handle" << std::endl;
+                char *saveptr2;
+                char *dup2 = apr_pstrdup(r->pool, lg->sublayers);
+                const char *token2 = strtok_r(dup2, ",", &saveptr2);
+                while (token2)
+                {
+                    layermap.insert(token2);
+		    std::clog << "   -> layermap insert" << token2 << std::endl;
+                    token2 = strtok_r(NULL, ",", &saveptr2);
+                }
+                token = NULL;
+                if (!lg->allow_transparency) transparency_allowed = false;
+                break;
+            }
+        }
 
+        // else add that layer verbatim.
+        // if (token) layermap.insert(token);
+
+        token = strtok_r(NULL, ",", &saveptr1);
+    }
+    std::clog << "layermap end processing" << std::endl;
+    
     std::clog << "NEW REQUEST: " << r->the_request << std::endl;
 
     char *type;
     char *customer_id;
+    char *user_key;
 
 #ifdef USE_KEY_DATABASE
     /*
@@ -900,75 +715,33 @@ int wms_getmap(request_rec *r)
      * key in the URL to be granted access.
      */
 
-    if (config->key_db_file)
+    if (config->key_db)
     {
         std::clog << "checking key " << r->uri << std::endl;
-        char *map_name = apr_pstrdup(r->pool, r->uri+1);
-        char *user_key = index(map_name, '/');
-        if (!user_key) 
+        user_key = apr_pstrdup(r->pool, r->uri+1);
+        char *delim = strpbrk(user_key, "/?");
+        if (delim) 
         {
-            return http_error(r, HTTP_FORBIDDEN, "No key in URL", exceptions);
-        }
-    
-        *(user_key++) = 0;
-
-        DB *dbp;
-        DBT key, data;
-        memset(&key, 0, sizeof(key));
-        memset(&data, 0, sizeof(data));
-        int ret;
-
-        if ((ret = db_create(&dbp, NULL, 0)) != 0) 
-        {
-            std::clog << "db_create returns error: " << db_strerror(ret) << std::endl;
-            return http_error(r, HTTP_INTERNAL_SERVER_ERROR, "database error", exceptions);
+            *(delim) = 0;
         }
 
-        if ((ret = dbp->open(dbp,
-            NULL, config->key_db_file, NULL, DB_UNKNOWN, DB_RDONLY, 0)) != 0) {
-            dbp->err(dbp, ret, "%s", config->key_db_file);
-            std::clog << "db_open returns error: " << db_strerror(ret) << std::endl;
-            return http_error(r, HTTP_INTERNAL_SERVER_ERROR, "database error", exceptions);
-        }
-        key.data = user_key;
-        key.size = strlen(user_key);
-
-        if ((ret = dbp->get(dbp, NULL, &key, &data, 0)) != 0)
+        struct wms_key *k = config->key_db;
+        while(k)
         {
-            std::clog << "db_get returns error for key '" << user_key << "': " << db_strerror(ret) << std::endl;
+            if (!strcmp(k->key, user_key))
+            {
+                break;
+            }
+            k = k->next;
+        }
+
+        if (!k)
+        {
+            std::clog << "key " << user_key << " not configured" << std::endl;
             return http_error(r, HTTP_FORBIDDEN, "Key not known", exceptions);
         }
 
-        char *colon = index((char *)data.data, ':');
-        if (!colon) return http_error(r, HTTP_INTERNAL_SERVER_ERROR, "Bad db content", exceptions);
-        *(colon++)=0;
-        char *colon2 = index(colon, ':');
-        if (!colon2) return http_error(r, HTTP_INTERNAL_SERVER_ERROR, "Bad db content", exceptions);
-        *(colon2++) = 0;
-        type = apr_pstrdup(r->pool, (char *) data.data);
-        customer_id = apr_pstrdup(r->pool, colon2);
-        
-        char *token = strtok(colon, ",");
-        bool found = false;
-        while (token)
-        {
-            if (!strcmp(token, map_name))
-            {
-                found = true;
-                break;
-            }
-            token = strtok(NULL, ",");
-        }   
-        
-        if (!found)
-        {
-            std::clog << "requested map name '" << map_name << "' not in allowed list for key '" << user_key << "'" << std::endl;
-            return http_error(r, HTTP_FORBIDDEN, "Map not allowed", exceptions);
-        }
-        
-        std::clog << "user id " << customer_id << ", account type is '" << type << "'" << std::endl;
-
-        if (!strcmp(type, "demo"))
+        if (k->demo)
         {
             if (config->max_demo_width && n_width > config->max_demo_width)
                 return wms_error(r, "InvalidDimensionValue", 
@@ -980,8 +753,40 @@ int wms_getmap(request_rec *r)
     }
 #endif
 
+    /** check if given SRS is supported by configuration */
+    char proj_srs_string[8192];
+    for (char *i = srs; *i; i++) *i=tolower(*i);
+
+    for (int i=0; i<config->srs_count; i++)
+    {
+        if (!strcasecmp(config->srs[i], srs))
+        {
+            sprintf(proj_srs_string, "+init=%s",srs);
+            break;
+        }
+    }
+
+#ifdef USE_KEY_DATABASE
+    char srscmp[256];
+    sprintf(srscmp, "%s/%s/", user_key, srs);
+
+    for (int i=0; i<config->key_srs_def_count; i++)
+    {
+        if (!strncasecmp(config->key_srs_def[i], srscmp, strlen(srscmp)))
+        {
+            strcpy(proj_srs_string, config->key_srs_def[i] + strlen(srscmp));
+            std::clog << "setting custom SRS for key " << user_key << " SRS " << srs << " to: " << proj_srs_string << std::endl;
+        }
+    }
+#endif
+
+    if (!strlen(proj_srs_string))
+    {
+        return wms_error(r, "InvalidSRS", "The given SRS ('%s') is not supported by this WMS service.", srs);
+    }
+
     using namespace mapnik;
-    Map mymap = *((Map *)config->mapnik_map);
+    Map *mymap = (Map *)config->mapnik_map;
 
     /* If you have a flaky database connection you might want to set this to > 1. 
      * This is really a brute force way of handling problems. */
@@ -992,46 +797,70 @@ int wms_getmap(request_rec *r)
         try 
         {
             std::clog << "Configuring map parameters" << std::endl;
-            char init[256];
-            for (char *i = srs; *i; i++) *i=tolower(*i);
-            snprintf(init, 256, "+init=%s",srs);
-            mymap.set_srs(init);
-            mymap.zoomToBox(Envelope<double>(bboxvals[0], bboxvals[1], bboxvals[2], bboxvals[3]));
-            mymap.resize(n_width, n_height);
+            mymap->set_srs(proj_srs_string);
+            mymap->zoom_to_box(box2d<double>(bboxvals[0], bboxvals[1], bboxvals[2], bboxvals[3]));
+            mymap->resize(n_width, n_height);
+            // since the map object will be reused later, we cannot make persistent changes to it
+            boost::optional<mapnik::color> oldbackground;
 
-            /*
-             * currently disabled. always render all layers.
-
-            // remove those layers that are not in the WMS "layers" 
-            // parameter. - unfortunately the map object doesn't
-            // allow us to acces the layers non-const, otherweise
-            // instead of copying the map object and removing layers,
-            // we'd just set them invisible!
-            
-            std::vector<mapnik::Layer> ml = mymap.layers();
-            if (layermap.size()) 
+            if (transparent && !strcasecmp(transparent, "true") && transparency_allowed)
             {
-                for (int i=ml.size()-1; i>=0; i--)
-                {
-                    if (layermap.find(ml[i].name()) == layermap.end())
-                    {
-                        mymap.removeLayer(i);
-                    }
-                }
+                std::clog << "transparent" << std::endl;
+                oldbackground = mymap->background();
+                mymap->set_background(mapnik::color(0,0,0,0));
             }
-            */
+            else if (bgcolor && strlen(bgcolor)>2)
+            {
+                std::clog << "bgcolor=" << bgcolor << std::endl;
+                if (!strncmp("0x", bgcolor, 2))
+                {
+                    bgcolor += 2;
+                }
+                if (*bgcolor == '#')
+                {
+                    bgcolor++;
+                }
+                char buffer[16];
+                snprintf(buffer, 16, "#%s", bgcolor);
+                oldbackground = mymap->background();
+                mymap->set_background(mapnik::color(buffer));
+            }
 
-            Image32 buf(mymap.getWidth(),mymap.getHeight());
-            agg_renderer<Image32> ren(mymap, buf);
+            // make those layers that are not in the WMS "layers" 
+            // parameter invisible 
+            
+            for (std::vector<mapnik::layer>::reverse_iterator i = mymap->layers().rbegin(); i != mymap->layers().rend(); i++)
+            {
+                if (layermap.empty())
+		{
+                   i->set_active(true);
+		   std::clog << "layer enable " << i->name() << " (empty layermap)" << std::endl;
+		}
+		else if (layermap.find(i->name()) != layermap.end())
+		{
+                   i->set_active(true);
+		   std::clog << "layer disable " << i->name() << " (present in layermap)" << std::endl;
+		}
+		else
+		{
+                   i->set_active(false);
+		   std::clog << "layer disable " << i->name() << " (not in layermap)" << std::endl;
+		}
+            }
+
+            image_32 buf(mymap->width(),mymap->height());
+            agg_renderer<image_32> ren(*mymap, buf, scale, 0u, 0u);
 
             /*
              * broken clients will request a width/height that does not match, so this log line
              * is worth looking out for. we will fix this to return the right image but quality
              * suffers.
              */
-            std::clog << "Start rendering (computed height is " << mymap.getHeight() << ", requested is " << n_height << ")" << std::endl;
+            std::clog << "Start rendering (computed height is " << mymap->height() << ", requested is " << n_height << ")" << std::endl;
             ren.apply();
             std::clog << "Rendering complete" << std::endl;
+
+            if (oldbackground) mymap->set_background(oldbackground.get());
             
             attempts = 0; // exit loop later
 
@@ -1039,21 +868,23 @@ int wms_getmap(request_rec *r)
             {
                 ap_set_content_type(r, "image/png");
                 std::clog << "Start streaming PNG response" << std::endl;
-                send_png_response(r, buf, n_height, false);
+                send_image_response(r, buf, n_height, "png32");
                 std::clog << "PNG response complete" << std::endl;
             }
             else if (!strcmp(format, "image/png8"))
             {
                 ap_set_content_type(r, "image/png");
                 std::clog << "Start streaming PNG response (palette image)" << std::endl;
-                send_png_response(r, buf, n_height, true);
+                send_image_response(r, buf, n_height, "png8");
                 std::clog << "PNG response complete" << std::endl;
             }
             else if (!strcmp(format, "image/jpeg"))
             {
+                char typespec[20];
+                snprintf(typespec, 20, "jpeg%d", quality);
                 ap_set_content_type(r, "image/jpeg");
                 std::clog << "Start streaming JPEG response" << std::endl;
-                send_jpeg_response(r, buf, n_height);
+                send_image_response(r, buf, n_height, typespec);
                 std::clog << "JPEG response complete" << std::endl;
             }
             else
@@ -1061,10 +892,12 @@ int wms_getmap(request_rec *r)
                 rv = wms_error(r, "InvalidFormat", "Cannot deliver requested data format ('%s')", format);
             }
         }
+/*
         catch ( const mapnik::config_error & ex )
         {
             rv = http_error(r, HTTP_INTERNAL_SERVER_ERROR, "mapnik config exception: %s", ex.what());
         }
+*/
         catch ( const std::exception & ex )
         {
             rv = http_error(r, HTTP_INTERNAL_SERVER_ERROR, "standard exception (pid %d): %s", getpid(), ex.what());
@@ -1129,7 +962,9 @@ extern "C"
 
         if (!request)
         {
-            return wms_error(r, "MissingDimensionValue", "Required parameter 'request' not set.");
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", "REQUEST not set - declining");
+            std::clog << "REQUEST not set - declining" << std::endl;
+            return DECLINED;
         }
         else if (!strcmp(request, "GetMap"))
         {

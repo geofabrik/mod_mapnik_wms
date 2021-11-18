@@ -37,8 +37,8 @@ What is WMS?
    nicer fit but costs much more.
 
    So if you want to clothe the masses (offer a fast slippy map for a lot of
-   users), you should use a tile server. If you want to server a small number
-   of users with custom maps, use a WMS.
+   users), you should use a tile server. If you want to serve custom maps to
+   a small number of users, use a WMS.
 
 What is mod_mapnik_wms?
 

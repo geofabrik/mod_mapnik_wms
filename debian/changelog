@@ -1,3 +1,54 @@
+libapache2-mod-mapnik-wms (0.8-1) focal; urgency=medium
+
+  * add capbility to override projctions with WmsKeySrsDef
+
+ -- Frederik Ramm <ramm@geofabrik.de>  Wed, 28 Apr 2021 15:40:04 +0200
+
+libapache2-mod-mapnik-wms (0.7-6) xenial; urgency=medium
+
+  * decline requests without REQUEST set
+
+ -- Frederik Ramm <ramm@geofabrik.de>  Wed, 28 Feb 2018 10:59:43 +0100
+
+libapache2-mod-mapnik-wms (0.7-5) xenial; urgency=medium
+
+  * allow MinWidth, MinHeight config options
+  * default to xml exception type if unset
+
+ -- Frederik Ramm <ramm@geofabrik.de>  Wed, 28 Feb 2018 10:59:43 +0100
+
+libapache2-mod-mapnik-wms (0.7-4) xenial; urgency=medium
+
+  * xenial build, mapnik3
+  * top layer uses configured name
+
+ -- Frederik Ramm <ramm@geofabrik.de>  Wed, 28 Feb 2018 10:59:43 +0100
+
+libapache2-mod-mapnik-wms (0.7-3) precise; urgency=low
+
+  * rename top layer to -root
+
+ -- Frederik Ramm <ramm@geofabrik.de>  Mon, 27 Jul 2015 10:02:18 +0000
+
+libapache2-mod-mapnik-wms (0.7-2) precise; urgency=low
+
+  * add WmsDefaultDpi apache config option
+
+ -- Frederik Ramm <ramm@geofabrik.de>  Wed, 03 Dec 2014 22:04:33 +0000
+
+libapache2-mod-mapnik-wms (0.7-1) precise; urgency=low
+
+  * WmsKey statt WmsKeyDb
+
+ -- Frederik Ramm <ramm@geofabrik.de>  Fri, 08 Nov 2013 08:49:12 +0000
+
+libapache2-mod-mapnik-wms (0.6-1) precise; urgency=low
+
+  * support for mapnik2
+  * user-selectable layers 
+
+ -- Frederik Ramm <ramm@geofabrik.de>  Wed, 06 Nov 2013 15:24:26 +0100
+
 libapache2-mod-mapnik-wms (0.5-1) jaunty; urgency=low
 
   * First public release.
