@@ -706,7 +706,7 @@ int wms_getmap(request_rec *r)
 
     char *type;
     char *customer_id;
-    char *user_key;
+    char *user_key = NULL;
 
 #ifdef USE_KEY_DATABASE
     /*
@@ -755,6 +755,7 @@ int wms_getmap(request_rec *r)
 
     /** check if given SRS is supported by configuration */
     char proj_srs_string[8192];
+    proj_srs_string[0] = 0;
     for (char *i = srs; *i; i++) *i=tolower(*i);
 
     for (int i=0; i<config->srs_count; i++)
@@ -768,14 +769,17 @@ int wms_getmap(request_rec *r)
 
 #ifdef USE_KEY_DATABASE
     char srscmp[256];
-    sprintf(srscmp, "%s/%s/", user_key, srs);
-
-    for (int i=0; i<config->key_srs_def_count; i++)
+    if (user_key)
     {
-        if (!strncasecmp(config->key_srs_def[i], srscmp, strlen(srscmp)))
+        sprintf(srscmp, "%s/%s/", user_key, srs);
+
+        for (int i=0; i<config->key_srs_def_count; i++)
         {
-            strcpy(proj_srs_string, config->key_srs_def[i] + strlen(srscmp));
-            std::clog << "setting custom SRS for key " << user_key << " SRS " << srs << " to: " << proj_srs_string << std::endl;
+            if (!strncasecmp(config->key_srs_def[i], srscmp, strlen(srscmp)))
+            {
+                strcpy(proj_srs_string, config->key_srs_def[i] + strlen(srscmp));
+                std::clog << "setting custom SRS for key " << user_key << " SRS " << srs << " to: " << proj_srs_string << std::endl;
+            }
         }
     }
 #endif

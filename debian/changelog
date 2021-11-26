@@ -1,3 +1,9 @@
+libapache2-mod-mapnik-wms (0.8-2) focal; urgency=medium
+
+  * bugfixes for non-keydb use
+
+ -- Frederik Ramm <ramm@geofabrik.de>  Wed, 11 Nov 2021 20:37:04 +0200
+
 libapache2-mod-mapnik-wms (0.8-1) focal; urgency=medium
 
   * add capbility to override projctions with WmsKeySrsDef
