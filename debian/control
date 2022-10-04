@@ -7,6 +7,6 @@ Section: web
 
 Package: libapache2-mod-mapnik-wms
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, apache2-data, libgd2-xpm | libgd2-noxpm|libgd3, apache2, libmapnik3.0
+Depends: ${shlibs:Depends}, ${misc:Depends}, apache2-data, libgd2-xpm | libgd2-noxpm|libgd3, apache2, libmapnik3.1
 Description: Mapnik WMS module for apache2
  This module implements an OGC Web Map Service based on Mapnik.

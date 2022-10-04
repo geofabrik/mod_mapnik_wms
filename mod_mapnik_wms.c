@@ -6,8 +6,6 @@
  *
  * part of the Mapnik WMS server module for Apache
  */
-#define _GNU_SOURCE
-
 #include "apr.h"
 #include "apr_strings.h"
 #include "apr_thread_proc.h"
@@ -244,6 +242,13 @@ static const char *handle_url_option(cmd_parms *cmd, void *mconfig, const char *
     cfg->url = word;
     return NULL;
 }
+static const char *handle_prefix_option(cmd_parms *cmd, void *mconfig, const char *word)
+{
+    // fprintf(stderr, ": %s:%d handle_option (%d, %p)\n", __FILE__, __LINE__, getpid(), cmd->server);
+    struct wms_cfg *cfg = ap_get_module_config(cmd->server->module_config, &mapnik_wms_module);
+    cfg->prefix = word;
+    return NULL;
+}
 #ifdef USE_KEY_DATABASE
 static const char *handle_key_option(cmd_parms *cmd, void *mconfig, const char *mapkey, const char *maptype)
 {
@@ -450,6 +455,13 @@ static const command_rec wms_options[] =
         RSRC_CONF,
         "WmsUrl is the URL under which your WMS server can be reached from the outside. It is used in constructing the GetCapabilities response."
     ),
+    AP_INIT_TAKE1(
+        "WmsPrefix",
+        handle_prefix_option,
+        NULL,
+        RSRC_CONF,
+        "WmsPrefix is the path component that WMS requests must begin with. The default is an empty string."
+    ),
 #ifdef USE_KEY_DATABASE
     AP_INIT_TAKE2(
         "WmsKey",
@@ -561,6 +573,7 @@ static void *create_wms_conf(apr_pool_t *p, server_rec *s)
     newcfg->datasource_count = 0;
     newcfg->title = 0;
     newcfg->url = 0;
+    newcfg->prefix = 0;
     newcfg->map = 0;
     newcfg->initialized = 0;
     newcfg->top_layer_name = "OpenStreetMap WMS";

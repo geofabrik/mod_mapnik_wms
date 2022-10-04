@@ -41,6 +41,7 @@ struct wms_cfg {
     const char *font[CAPACITY_CONFIG_FONT];
     const char *title;
     const char *url;
+    const char *prefix;
     const char *map;
     const char *top_layer_name;
     const char *top_layer_title;

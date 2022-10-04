@@ -23,7 +23,6 @@ APLOG_USE_MODULE(mapnik_wms);
 #include <http_protocol.h>
 #include <apr_strings.h>
 #include <apr_pools.h>
-#include <proj_api.h>
 }
 
 #include <mapnik/map.hpp>
@@ -364,48 +363,9 @@ int wms_getcap(request_rec *r)
 
     for (int i=0; i<config->srs_count; i++)
     {
-        sprintf(buffer, "+init=%s", config->srs[i]);
-        for (char *j = buffer; *j; j++) *j=tolower(*j);
-        projPJ pj = pj_init_plus(buffer);
-        if (!pj)
-        {
-            std::clog << "error while initializing projection '" << config->srs[i] << "': '" << pj_strerrno(pj_errno) << "', dropped" << std::endl;
-            continue;
-        }
-        projUV uv;
-        uv.u = config->minx;
-        uv.v = config->miny;
-        if (strcmp(config->srs[i], "EPSG:4326"))
-        {
-            uv.u *= DEG_TO_RAD;
-            uv.v *= DEG_TO_RAD;
-            uv = pj_fwd(uv, pj);
-        }
-
         srs_list.append("    <SRS>");
         srs_list.append(config->srs[i]);
         srs_list.append("</SRS>\n");
-
-    /*
-     * add bounding boxes in layer coordinates. this seems not to be required,
-     * plus it makes things a bit difficult for those SRSes which give "nan"
-     * values for large extents.
-     
-        sprintf(buffer, "   <BoundingBox SRS='%s' minx='%f' miny='%f' ", config->srs[i], uv.u, uv.v);
-        bbox_list.append(buffer);
-
-        uv.u = config->maxx;
-        uv.v = config->maxy;
-        if (strcmp(config->srs[i], "EPSG:4326"))
-        {
-            uv.u *= DEG_TO_RAD;
-            uv.v *= DEG_TO_RAD;
-            uv = pj_fwd(uv, pj);
-        }
-        pj_free(pj);
-        sprintf(buffer, "maxx='%f' maxy='%f' />\n", uv.u, uv.v);
-        bbox_list.append(buffer);
-    */
     }
 
     ap_set_content_type(r, "application/vnd.ogc.wms_xml");
@@ -708,6 +668,15 @@ int wms_getmap(request_rec *r)
     char *customer_id;
     char *user_key = NULL;
 
+    if (config->prefix)
+    {
+        if (strncmp(r->uri, config->prefix, strlen(config->prefix)))
+        {
+            std::clog << "uri '" << r->uri << "' does not begin with configured prefix '" << config->prefix << "'" << std::endl;
+            return http_error(r, HTTP_NOT_FOUND, "Not Found", exceptions);
+        }
+    }
+
 #ifdef USE_KEY_DATABASE
     /*
      * See README for what the key database is about. It is basically
@@ -717,8 +686,8 @@ int wms_getmap(request_rec *r)
 
     if (config->key_db)
     {
-        std::clog << "checking key " << r->uri << std::endl;
-        user_key = apr_pstrdup(r->pool, r->uri+1);
+        user_key = apr_pstrdup(r->pool, r->uri + 1 + (config->prefix ? strlen(config->prefix) : 0));
+        std::clog << "checking key '" << user_key << "' extracted from URI '" << r->uri << "'" << std::endl;
         char *delim = strpbrk(user_key, "/?");
         if (delim) 
         {
@@ -762,7 +731,9 @@ int wms_getmap(request_rec *r)
     {
         if (!strcasecmp(config->srs[i], srs))
         {
-            sprintf(proj_srs_string, "+init=%s",srs);
+            sprintf(proj_srs_string, 
+                "%s", // for older proj versions, needs "+init=%s"
+                srs);
             break;
         }
     }
