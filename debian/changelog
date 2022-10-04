@@ -1,4 +1,4 @@
-libapache2-mod-mapnik-wms (0.9) UNRELEASED; urgency=medium
+libapache2-mod-mapnik-wms (0.9) jammy; urgency=medium
 
   * support WmsPrefix option
 
