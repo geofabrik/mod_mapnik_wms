@@ -368,6 +368,13 @@ int wms_getcap(request_rec *r)
         srs_list.append("</SRS>\n");
     }
 
+    strcpy(buffer, ap_http_scheme(r));
+    strcat(buffer, ":");
+    const char *dblslash = strstr(config->url, "//");
+    strcat(buffer, dblslash);
+    strcat(buffer, r->uri);
+    const char *url = buffer;
+
     ap_set_content_type(r, "application/vnd.ogc.wms_xml");
     ap_rprintf(r, 
         "<?xml version='1.0' encoding='UTF-8' standalone='no' ?>\n"
@@ -381,7 +388,7 @@ int wms_getcap(request_rec *r)
         "<Service>\n"
         "  <Name>OGC:WMS</Name>\n"
         "  <Title>%s</Title>\n"
-        "  <OnlineResource xmlns:xlink='http://www.w3.org/1999/xlink' xlink:href='%s%s?'/>\n"
+        "  <OnlineResource xmlns:xlink='http://www.w3.org/1999/xlink' xlink:href='%s?'/>\n"
         "</Service>\n"
         "\n"
         "<Capability>\n"
@@ -390,7 +397,7 @@ int wms_getcap(request_rec *r)
         "      <Format>application/vnd.ogc.wms_xml</Format>\n"
         "      <DCPType>\n"
         "        <HTTP>\n"
-        "          <Get><OnlineResource xmlns:xlink='http://www.w3.org/1999/xlink' xlink:href='%s%s?'/></Get>\n"
+        "          <Get><OnlineResource xmlns:xlink='http://www.w3.org/1999/xlink' xlink:href='%s?'/></Get>\n"
         "        </HTTP>\n"
         "      </DCPType>\n"
         "    </GetCapabilities>\n"
@@ -400,7 +407,7 @@ int wms_getcap(request_rec *r)
         "      <Format>image/jpeg</Format>\n"
         "      <DCPType>\n"
         "        <HTTP>\n"
-        "          <Get><OnlineResource xmlns:xlink='http://www.w3.org/1999/xlink' xlink:href='%s%s?'/></Get>\n"
+        "          <Get><OnlineResource xmlns:xlink='http://www.w3.org/1999/xlink' xlink:href='%s?'/></Get>\n"
         "        </HTTP>\n"
         "      </DCPType>\n"
         "    </GetMap>\n"
@@ -411,7 +418,7 @@ int wms_getcap(request_rec *r)
         "    <Format>application/vnd.ogc.se_blank</Format>\n"
         "  </Exception>\n"
         "  <UserDefinedSymbolization SupportSLD='0' UserLayer='0' UserStyle='0' RemoteWFS='0'/>\n", 
-                config->title, config->url, r->uri, config->url, r->uri, config->url, r->uri);
+                config->title, url, url, url);
 
     // FIXME more of this should be configurable.
     ap_rprintf(r, 

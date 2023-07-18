@@ -1,3 +1,9 @@
+libapache2-mod-mapnik-wms (0.9.1) UNRELEASED; urgency=medium
+
+  * dynamically select schema when creating capabilities document
+
+ -- Frederik Ramm <ramm@.geofabrik.de>  Tue, 18 Jul 2023 11:50:59 +0200
+
 libapache2-mod-mapnik-wms (0.9) jammy; urgency=medium
 
   * support WmsPrefix option
