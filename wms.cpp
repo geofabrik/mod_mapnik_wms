@@ -739,7 +739,11 @@ int wms_getmap(request_rec *r)
         if (!strcasecmp(config->srs[i], srs))
         {
             sprintf(proj_srs_string, 
+#if PJ_VERSION < 800
+                "+init=%s",
+#else
                 "%s", // for older proj versions, needs "+init=%s"
+#endif
                 srs);
             break;
         }
