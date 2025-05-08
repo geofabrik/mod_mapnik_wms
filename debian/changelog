@@ -1,8 +1,9 @@
-libapache2-mod-mapnik-wms (0.9) UNRELEASED; urgency=medium
+libapache2-mod-mapnik-wms (0.9ubuntu1) UNRELEASED; urgency=medium
 
   * support WmsPrefix option
+  * support WmsSrsDef option
 
- -- Frederik Ramm <ramm@geofabrik.de>  Fri, 30 Sep 2022 15:12:57 +0200
+ -- Frederik Ramm <ramm@geofabrik.de>  Thu, 08 May 2025 14:02:12 +0200
 
 libapache2-mod-mapnik-wms (0.8-3) jammy; urgency=medium
 

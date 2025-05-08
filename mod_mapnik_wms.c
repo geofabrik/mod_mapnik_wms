@@ -108,6 +108,7 @@ static void child_init(apr_pool_t *p, server_rec *s)
     fflush(stderr);
 }
 
+// WmsSrs option - defines the SRS that are supported by this server
 static const char *handle_srs_option(cmd_parms *cmd, void *mconfig, const char *word)
 {
     // fprintf(stderr, ": %s:%d handle_option (%d, %p)\n", __FILE__, __LINE__, getpid(), cmd->server);
@@ -121,6 +122,25 @@ static const char *handle_srs_option(cmd_parms *cmd, void *mconfig, const char *
     cfg->srs[cfg->srs_count++] = word;
     return NULL;
 }
+
+// WmsSrsDef option - re-defines SRS 
+static const char *handle_srs_def_option(cmd_parms *cmd, void *mconfig, const char *srs, const char *def)
+{
+    // fprintf(stderr, ": %s:%d handle_option (%d, %p)\n", __FILE__, __LINE__, getpid(), cmd->server);
+    struct wms_cfg *cfg = ap_get_module_config(cmd->server->module_config, &mapnik_wms_module);
+    if (cfg->srs_def_count >= CAPACITY_CONFIG_SRS_DEF)
+    {
+        fprintf(stderr, ": %s:%d handle_srs_option: cannot add more SRS definitions, compiled-in limit is %d\n",  
+           __FILE__, __LINE__, CAPACITY_CONFIG_SRS_DEF);
+        return NULL;
+    }
+    char *x = (char *) apr_pcalloc(cfg->pool, strlen(srs)+strlen(def)+3);
+    sprintf(x, "%s/%s", srs, def);
+    cfg->srs_def[cfg->srs_def_count++] = x;
+    return NULL;
+}
+
+// WmsKeySrsDef option - re-defines specific SRS for specific API key
 static const char *handle_key_srs_def_option(cmd_parms *cmd, void *mconfig, const char *key, const char *srs, const char *def)
 {
     // fprintf(stderr, ": %s:%d handle_option (%d, %p)\n", __FILE__, __LINE__, getpid(), cmd->server);
@@ -492,6 +512,13 @@ static const command_rec wms_options[] =
         "WmsKeySrsDef takes a key and a SRS name (e.g. EPSG:1234) and assigns a PROJ init string to it."
     ),
 #endif
+    AP_INIT_TAKE2(
+        "WmsSrsDef",
+        handle_srs_def_option,
+        NULL,
+        RSRC_CONF,
+        "WmsSrsDef takes a SRS name (e.g. EPSG:1234) and assigns a PROJ init string to it."
+    ),
     AP_INIT_TAKE1(
         "WmsMaxWidth",
         handle_maw_option,
@@ -568,6 +595,7 @@ static void *create_wms_conf(apr_pool_t *p, server_rec *s)
 
     newcfg->pool = p;
     newcfg->srs_count = 0;
+    newcfg->srs_def_count = 0;
     newcfg->key_srs_def_count = 0;
     newcfg->font_count = 0;
     newcfg->datasource_count = 0;

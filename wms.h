@@ -30,6 +30,9 @@ struct wms_cfg {
     int srs_count;
     #define CAPACITY_CONFIG_SRS 256
     const char *srs[CAPACITY_CONFIG_SRS];
+    int srs_def_count;
+    #define CAPACITY_CONFIG_SRS_DEF 256
+    const char *srs_def[CAPACITY_CONFIG_SRS_DEF];
     int key_srs_def_count;
     #define CAPACITY_CONFIG_KEY_SRS_DEF 256
     const char *key_srs_def[CAPACITY_CONFIG_KEY_SRS_DEF];

@@ -738,8 +738,21 @@ int wms_getmap(request_rec *r)
         }
     }
 
-#ifdef USE_KEY_DATABASE
     char srscmp[256];
+
+    /** check if given SRS has a server-wide override */
+    sprintf(srscmp, "%s/", srs);
+    for (int i=0; i<config->srs_def_count; i++)
+    {
+        if (!strncasecmp(config->srs_def[i], srscmp, strlen(srscmp)))
+        {
+            strcpy(proj_srs_string, config->srs_def[i] + strlen(srscmp));
+            std::clog << "setting custom SRS " << srs << " to: " << proj_srs_string << std::endl;
+        }
+    }
+
+#ifdef USE_KEY_DATABASE
+    /** check if given SRS has a per-client override */
     if (user_key)
     {
         sprintf(srscmp, "%s/%s/", user_key, srs);
