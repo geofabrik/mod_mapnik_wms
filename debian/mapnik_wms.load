@@ -1,5 +1,4 @@
-LoadFile /usr/lib/libstdc++.so.6
-LoadFile /usr/lib/libmapnik.so.0.6
-LoadFile /usr/lib/libgd.so.2
-LoadFile /usr/lib/libdb-4.6.so
+LoadFile /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33
+LoadFile /usr/lib/libmapnik.so.3.1.0
+LoadFile /usr/lib/x86_64-linux-gnu/libgd.so.3.0.11
 LoadModule mapnik_wms_module /usr/lib/apache2/modules/mod_mapnik_wms.so
