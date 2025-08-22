@@ -10,7 +10,7 @@ endif
 
 build: build-stamp
 
-build-stamp:  
+build-stamp:
 	dh_testdir
 
 	# Add commands to compile the package here.
@@ -69,4 +69,3 @@ binary-arch: build install
 
 binary: binary-indep binary-arch
 .PHONY: build clean binary-indep binary-arch binary install
-

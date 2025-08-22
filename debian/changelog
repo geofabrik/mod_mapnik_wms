@@ -64,7 +64,7 @@ libapache2-mod-mapnik-wms (0.7-1) precise; urgency=low
 libapache2-mod-mapnik-wms (0.6-1) precise; urgency=low
 
   * support for mapnik2
-  * user-selectable layers 
+  * user-selectable layers
 
  -- Frederik Ramm <ramm@geofabrik.de>  Wed, 06 Nov 2013 15:24:26 +0100
 
