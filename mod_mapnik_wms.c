@@ -147,7 +147,7 @@ static const char *handle_key_srs_def_option(cmd_parms *cmd, void *mconfig, cons
     struct wms_cfg *cfg = ap_get_module_config(cmd->server->module_config, &mapnik_wms_module);
     if (cfg->key_srs_def_count >= CAPACITY_CONFIG_KEY_SRS_DEF)
     {
-        fprintf(stderr, ": %s:%d handle_key_srs_def_option: cannot add more key-specific SRS defintions, compiled-in limit is %d\n",  
+        fprintf(stderr, ": %s:%d handle_key_srs_def_option: cannot add more key-specific SRS definitions, compiled-in limit is %d\n",
            __FILE__, __LINE__, CAPACITY_CONFIG_KEY_SRS_DEF);
         return NULL;
     }
@@ -403,7 +403,7 @@ static const command_rec wms_options[] =
         handle_font_option,
         NULL,
         RSRC_CONF,
-        "MapnikFonts takes a list of ttf files to make availalbe to Mapnik."
+        "MapnikFonts takes a list of ttf files to make available to Mapnik."
     ),
     AP_INIT_TAKE1(
         "MapnikMap",
