@@ -38,10 +38,17 @@ To build mod\_mapnik\_wms, you need to have the following installed:
 -   Apache2 development package (`apache2-dev` and `libapr1-dev`)
 -   libgd2 development package
 
-You should be able to build a Debian package by just running `debuild`,
-but you can also choose to run "make". 
+You can run `make` to build the package.
 
 You may have to adjust some Mapnik version numbers (`grep -i mapnik debian/*`).
+
+### Debian/Ubuntu
+
+Packing for Debian/Ubuntu is in the `debian/` directory. The `main` branch is
+currently optimized for Ubuntu Focal 24.04.
+
+You should be able to build a Debian package by just running `debuild`, or
+`git-buildpackage`.
 
 ## Installing and Configuring mod\_mapnik\_wms
 
