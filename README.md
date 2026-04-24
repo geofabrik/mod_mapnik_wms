@@ -45,7 +45,7 @@ You may have to adjust some Mapnik version numbers (`grep -i mapnik debian/*`).
 ### Debian/Ubuntu
 
 Packing for Debian/Ubuntu is in the `debian/` directory. The `main` branch is
-currently optimized for Ubuntu Focal 24.04.
+currently optimized for Ubuntu Focal 20.04.
 
 You should be able to build a Debian package by just running `debuild`, or
 `git-buildpackage`.
