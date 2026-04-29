@@ -85,7 +85,10 @@ bool load_configured_map(server_rec *s, struct wms_cfg *cfg)
 
 int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
 {
-    std::cerr << "> " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ")" << std::endl;
+    if (cfg->debug)
+    {
+        std::cerr << "> " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ")" << std::endl;
+    }
 
     if (!cfg->active)
     {
@@ -143,7 +146,11 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") OK" << std::endl;
+    if (cfg->debug)
+    {
+        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") OK" << std::endl;
+    }
+
     return OK;
 }
 } /* extern C */
