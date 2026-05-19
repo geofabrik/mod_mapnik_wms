@@ -1,6 +1,6 @@
 # mod\_mapnik\_wms
 
-`mod\_mapnik\_wms` is an Apache module for building a
+`mod_mapnik_wms` is an Apache module for building a
 [Mapnik](https://github.com/mapnik/mapnik) based 
 [WMS](https://wiki.openstreetmap.org/wiki/WMS) server. It was initially 
 written by Frederik Ramm for internal [Geofabrik](https://www.geofabrik.de/) 
