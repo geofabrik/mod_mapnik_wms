@@ -73,9 +73,7 @@ bool load_configured_map(server_rec *s, struct wms_cfg *cfg)
     }
     catch (const std::exception & ex)
     {
-        ap_log_error(APLOG_MARK, APLOG_EMERG, 0, s,
-             "error initializing map: %s.", ex.what());
-        std::clog << "error loading map: " << ex.what() << std::endl;
+        ap_log_error(APLOG_MARK, APLOG_EMERG, 0, s, "error initializing map: %s.", ex.what());
         delete (mapnik::Map *) cfg->mapnik_map;
         cfg->mapnik_map = NULL;
         return false;
@@ -135,8 +133,7 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
     if (cfg->debug)
     {
         // will create map later
-        std::clog << "debug mode, load map file later" << std::endl;
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") OK" << std::endl;
+        ap_log_error(APLOG_MARK, APLOG_EMERG, 0, s, "debug mode, load map file later");
         return OK;
     }
 
@@ -197,7 +194,6 @@ int http_error(request_rec *r, int code, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(msg, 1023, fmt, ap);
     msg[1023]=0;
-    std::clog << msg << std::endl;
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", msg);
     ap_set_content_type(r, "text/plain");
     ap_rputs(msg, r);
@@ -217,7 +213,6 @@ int wms_error(request_rec *r, const char *code, const char *fmt, ...)
     vsnprintf(msg, 1023, fmt, ap);
     msg[1023]=0;
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", msg);
-    std::clog << msg << std::endl;
 
     char *args = r->args ? apr_pstrdup(r->pool, r->args) : 0;
     char *amp;
@@ -566,7 +561,7 @@ int wms_getmap(request_rec *r)
     if (!styles) return wms_error(r, "MissingDimensionValue", "required parameter 'styles' not set");
     if (!format) return wms_error(r, "MissingDimensionValue", "required parameter 'format' not set");
 
-    std::clog << "layers parameter: '" << layers << "'" << std::endl;
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "layers parameter: '%s'", layers);
 
     int n_width = atoi(width);
     int n_height = atoi(height);
@@ -633,7 +628,7 @@ int wms_getmap(request_rec *r)
         // then kill layer selection and return everything.
         if  (!strcmp(token, config->top_layer_name))
         {
-            std::clog << "layermap clear, found top-level layer '" << token << "'" << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layermap clear, found top-level layer '%s'", token);
             layermap.clear();
             break;
         }
@@ -641,19 +636,19 @@ int wms_getmap(request_rec *r)
         // if the layer refers to a layer group handle,
         // add all members of that layer group
         transparency_allowed = true;
-	std::clog << "layermap handle token '" << token << "'" << std::endl;
+		ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layermap handle token '%s'", token);
         for (struct layer_group *lg = config->first_layer_group; lg; lg = lg->next)
         {
             if (!strcmp(token, lg->grouphandle))
             {
-	        std::clog << "-> found group handle" << std::endl;
+				ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "-> found group handle");
                 char *saveptr2;
                 char *dup2 = apr_pstrdup(r->pool, lg->sublayers);
                 const char *token2 = strtok_r(dup2, ",", &saveptr2);
                 while (token2)
                 {
                     layermap.insert(token2);
-		    std::clog << "   -> layermap insert" << token2 << std::endl;
+					ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "   -> layermap insert %s", token2);
                     token2 = strtok_r(NULL, ",", &saveptr2);
                 }
                 token = NULL;
@@ -667,9 +662,9 @@ int wms_getmap(request_rec *r)
 
         token = strtok_r(NULL, ",", &saveptr1);
     }
-    std::clog << "layermap end processing" << std::endl;
+	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layermap end processing");
     
-    std::clog << "NEW REQUEST: " << r->the_request << std::endl;
+	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "NEW REQUEST: %s", r->the_request);
 
     char *type;
     char *customer_id;
@@ -679,7 +674,7 @@ int wms_getmap(request_rec *r)
     {
         if (strncmp(r->uri, config->prefix, strlen(config->prefix)))
         {
-            std::clog << "uri '" << r->uri << "' does not begin with configured prefix '" << config->prefix << "'" << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "uri '%s' does not begin with configured prefix '%s'", r->uri, config->prefix);
             return http_error(r, HTTP_NOT_FOUND, "Not Found", exceptions);
         }
     }
@@ -694,7 +689,7 @@ int wms_getmap(request_rec *r)
     if (config->key_db)
     {
         user_key = apr_pstrdup(r->pool, r->uri + 1 + (config->prefix ? strlen(config->prefix) : 0));
-        std::clog << "checking key '" << user_key << "' extracted from URI '" << r->uri << "'" << std::endl;
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "checking key '%s' extracted from URI '%s'", user_key, r->uri);
         char *delim = strpbrk(user_key, "/?");
         if (delim) 
         {
@@ -713,7 +708,7 @@ int wms_getmap(request_rec *r)
 
         if (!k)
         {
-            std::clog << "key " << user_key << " not configured" << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "key %s not configured", user_key);
             return http_error(r, HTTP_FORBIDDEN, "Key not known", exceptions);
         }
 
@@ -754,7 +749,7 @@ int wms_getmap(request_rec *r)
         if (!strncasecmp(config->srs_def[i], srscmp, strlen(srscmp)))
         {
             strcpy(proj_srs_string, config->srs_def[i] + strlen(srscmp));
-            std::clog << "setting custom SRS " << srs << " to: " << proj_srs_string << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "setting custom SRS %s to %s", srs, proj_srs_string);
         }
     }
 
@@ -769,7 +764,8 @@ int wms_getmap(request_rec *r)
             if (!strncasecmp(config->key_srs_def[i], srscmp, strlen(srscmp)))
             {
                 strcpy(proj_srs_string, config->key_srs_def[i] + strlen(srscmp));
-                std::clog << "setting custom SRS for key " << user_key << " SRS " << srs << " to: " << proj_srs_string << std::endl;
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "layers parameter: '%s'", layers);
+				ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "setting custom SRS for key %s SRS %s to: %s", user_key, srs , proj_srs_string);
             }
         }
     }
@@ -791,7 +787,7 @@ int wms_getmap(request_rec *r)
     {
         try 
         {
-            std::clog << "Configuring map parameters" << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Configuring map parameters");
             mymap->set_srs(proj_srs_string);
             mymap->zoom_to_box(box2d<double>(bboxvals[0], bboxvals[1], bboxvals[2], bboxvals[3]));
             mymap->resize(n_width, n_height);
@@ -800,13 +796,13 @@ int wms_getmap(request_rec *r)
 
             if (transparent && !strcasecmp(transparent, "true") && transparency_allowed)
             {
-                std::clog << "transparent" << std::endl;
+				ap_log_rerror(APLOG_MARK, APLOG_TRACE2, 0, r, "transparent");
                 oldbackground = mymap->background();
                 mymap->set_background(mapnik::color(0,0,0,0));
             }
             else if (bgcolor && strlen(bgcolor)>2)
             {
-                std::clog << "bgcolor=" << bgcolor << std::endl;
+				ap_log_rerror(APLOG_MARK, APLOG_TRACE2, 0, r, "bgcolor=%s", bgcolor);
                 if (!strncmp("0x", bgcolor, 2))
                 {
                     bgcolor += 2;
@@ -829,17 +825,17 @@ int wms_getmap(request_rec *r)
                 if (layermap.empty())
 		{
                    i->set_active(true);
-		   std::clog << "layer enable " << i->name() << " (empty layermap)" << std::endl;
+				   ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layer enable %s (empty layermap)", i->name().c_str());
 		}
 		else if (layermap.find(i->name()) != layermap.end())
 		{
                    i->set_active(true);
-		   std::clog << "layer disable " << i->name() << " (present in layermap)" << std::endl;
+		   ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layer disable %s (present in layermap)", i->name().c_str());
 		}
 		else
 		{
                    i->set_active(false);
-		   std::clog << "layer disable " << i->name() << " (not in layermap)" << std::endl;
+		   ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layer disable %s (not in layermap)", i->name().c_str());
 		}
             }
 
@@ -851,9 +847,9 @@ int wms_getmap(request_rec *r)
              * is worth looking out for. we will fix this to return the right image but quality
              * suffers.
              */
-            std::clog << "Start rendering (computed height is " << mymap->height() << ", requested is " << n_height << ")" << std::endl;
+            ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Start rendering (computed height is %d, requested is %d)", mymap->height(), n_height);
             ren.apply();
-            std::clog << "Rendering complete" << std::endl;
+            ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Rendering complete");
 
             if (oldbackground) mymap->set_background(oldbackground.get());
             
@@ -862,25 +858,25 @@ int wms_getmap(request_rec *r)
             if (!strcmp(format, "image/png"))
             {
                 ap_set_content_type(r, "image/png");
-                std::clog << "Start streaming PNG response" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Start streaming PNG response");
                 send_image_response(r, buf, n_height, "png32");
-                std::clog << "PNG response complete" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "PNG response complete");
             }
             else if (!strcmp(format, "image/png8"))
             {
                 ap_set_content_type(r, "image/png");
-                std::clog << "Start streaming PNG response (palette image)" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Start streaming PNG response (palette image)");
                 send_image_response(r, buf, n_height, "png8");
-                std::clog << "PNG response complete" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "PNG response complete");
             }
             else if (!strcmp(format, "image/jpeg"))
             {
                 char typespec[20];
                 snprintf(typespec, 20, "jpeg%d", quality);
                 ap_set_content_type(r, "image/jpeg");
-                std::clog << "Start streaming JPEG response" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Start streaming JPEG response");
                 send_image_response(r, buf, n_height, typespec);
-                std::clog << "JPEG response complete" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "JPEG response complete");
             }
             else
             {
@@ -958,7 +954,6 @@ extern "C"
         if (!request)
         {
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", "REQUEST not set - declining");
-            std::clog << "REQUEST not set - declining" << std::endl;
             return DECLINED;
         }
         else if (!strcmp(request, "GetMap"))

@@ -94,6 +94,19 @@ The mod\_mapnik\_wms-specific configuration options are:
 | `WmsMaxWidth`, `WmsMaxHeight`, `WmsMinWidth`, `WmsMinHeight` | 1 for min, none for max | The allowed image size range for WMS requests (in pixels) |
 | `WmsDefaultDpi` | 90 | Default resolution (when not explicitly requested by the client). |
 
+### Logging
+
+This module will using Apache's Logging Framework. Log message from this module
+will be in the Error log. The [default LogLevel
+(`warn`)](https://httpd.apache.org/docs/2.4/mod/core.html#loglevel) causes no
+log messages from this module. Enable logging for this module with:
+
+    LogLevel warn mapnik_wms_module:info
+
+Unfortunately the global server error log will often be spammed by mapnik. e.g.:
+
+    Mapnik LOG> 2026-05-21 13:18:04: warning: unable to find face-name 'Unifont Medium' in FontSet 'fontset-0'
+
 ## Map Style
 
 Built on Mapnik, mod\_mapnik\_wms supports any map style that Mapnik supports. 
