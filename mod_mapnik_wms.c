@@ -156,13 +156,6 @@ static const char *handle_key_srs_def_option(cmd_parms *cmd, void *mconfig, cons
     cfg->key_srs_def[cfg->key_srs_def_count++] = x;
     return NULL;
 }
-static const char *handle_log_option(cmd_parms *cmd, void *mconfig, const char *word)
-{
-    // fprintf(stderr, ": %s:%d handle_option (%d, %p)\n", __FILE__, __LINE__, getpid(), cmd->server);
-    struct wms_cfg *cfg = ap_get_module_config(cmd->server->module_config, &mapnik_wms_module);
-    cfg->logfile = word;
-    return NULL;
-}
 static const char *handle_datasource_option(cmd_parms *cmd, void *mconfig, const char *word)
 {
     // fprintf(stderr, ": %s:%d handle_option (%d, %p)\n", __FILE__, __LINE__, getpid(), cmd->server);
@@ -460,13 +453,6 @@ static const command_rec wms_options[] =
         NULL,
         RSRC_CONF,
         "If WmsDebug is set, the map file will be loaded for each request instead of once at startup."
-    ),
-    AP_INIT_TAKE1(
-        "MapnikLog",
-        handle_log_option,
-        NULL,
-        RSRC_CONF,
-        "MapnikLog is the name of the log file to write Mapnik debug output to."
     ),
     AP_INIT_TAKE1(
         "WmsUrl",

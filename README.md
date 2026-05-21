@@ -81,7 +81,6 @@ The mod\_mapnik\_wms-specific configuration options are:
 
 | Option | Default | Use |
 |--------|---------|-----|
-| `MapnikLog` | none | File to redirect the "clog" stream to. |
 | `MapnikDatasources` | none (required) | Path to Mapnik data source modules (plugins), usually `/usr/lib/mapnik/input`. May occur more than once. |
 | `MapnikFonts` | none (required) | Path to one font file used in map files. May occur more than once. mod\_mapnik\_wms cannot recurse a font directory - each font has to be specified separately. |
 | `MapnikMap` | none (required) | Path to the map file (mapnik XML file). Currently only one is supported. |
@@ -102,6 +101,8 @@ will be in the Error log. The [default LogLevel
 log messages from this module. Enable logging for this module with:
 
     LogLevel warn mapnik_wms_module:info
+
+The old `MapnikLog` setting & functionality has been removed.
 
 Unfortunately the global server error log will often be spammed by mapnik. e.g.:
 

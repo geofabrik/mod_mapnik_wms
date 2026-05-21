@@ -482,16 +482,6 @@ int wms_getmap(request_rec *r)
 
     bool end = (args == 0);
 
-    FILE *f = fopen(config->logfile, "a");
-    std::streambuf *old = NULL;
-    logbuffer *o = NULL;
-    if (f)
-    {
-        o = new logbuffer(f);
-        old = std::clog.rdbuf();
-        std::clog.rdbuf(o);
-    }
-
     /* 
      * in debug mode, the map is loaded/parsed for each request. that makes
      * it easier to make changes (no apache restart required)
@@ -898,14 +888,6 @@ int wms_getmap(request_rec *r)
             rv = http_error(r, HTTP_INTERNAL_SERVER_ERROR, "other exception");
         }
         if (attempts) ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "re-trying...");
-    }
-
-    // reset clog stream
-    if (old) 
-    {
-        std::clog.rdbuf(old);
-        delete o;
-        fclose(f);
     }
 
     if (config->debug) delete (mapnik::Map *) config->mapnik_map;
