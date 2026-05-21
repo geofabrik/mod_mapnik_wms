@@ -83,10 +83,6 @@ bool load_configured_map(server_rec *s, struct wms_cfg *cfg)
 
 int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
 {
-    if (cfg->debug)
-    {
-        std::cerr << "> " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ")" << std::endl;
-    }
 
     if (!cfg->active)
     {
@@ -97,13 +93,13 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
 
     if (!cfg->datasource_count)
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: datasource_count" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: datasource_count");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     if (!cfg->font_count)
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: font_count" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: font_count");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -115,18 +111,18 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
 
     if (!cfg->map)
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: map" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: map");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     if (!cfg->url)
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: url" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: url");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
     if (!cfg->title)
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: title" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: title");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -141,14 +137,11 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
 
     if (!load_configured_map(s, cfg))
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: load_configured_map" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: load_configured_map");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    if (cfg->debug)
-    {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") OK" << std::endl;
-    }
+	ap_log_error(APLOG_MARK, APLOG_TRACE1, 0, s, "wms_initialize OK");
 
     return OK;
 }
