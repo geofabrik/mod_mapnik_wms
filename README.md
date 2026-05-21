@@ -98,7 +98,7 @@ The mod\_mapnik\_wms-specific configuration options are:
 This module will using Apache's Logging Framework. Log message from this module
 will be in the Error log. The [default LogLevel
 (`warn`)](https://httpd.apache.org/docs/2.4/mod/core.html#loglevel) causes no
-log messages from this module. Enable logging for this module with:
+log messages from this module, except errors. Enable logging for this module with:
 
     LogLevel warn mapnik_wms_module:info
 
@@ -107,6 +107,12 @@ The old `MapnikLog` setting & functionality has been removed.
 Unfortunately the global server error log will often be spammed by mapnik. e.g.:
 
     Mapnik LOG> 2026-05-21 13:18:04: warning: unable to find face-name 'Unifont Medium' in FontSet 'fontset-0'
+
+Some server errors (such as if the map image fails to be generated) will be
+sent as an image to the client (with an error message rendered in the image),
+and with a HTTP 200 status code. If it's a real server side error, an apache
+ERROR message will be logged. With default Apache `LogLevel` setting this will
+be included.
 
 ## Map Style
 

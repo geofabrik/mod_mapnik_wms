@@ -93,6 +93,8 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
         return OK;
     }
 
+	ap_log_error(APLOG_MARK, APLOG_TRACE1, 0, s, "wms_initialize start");
+
     if (!cfg->datasource_count)
     {
         std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: datasource_count" << std::endl;
@@ -205,14 +207,14 @@ int http_error(request_rec *r, int code, const char *fmt, ...)
  * This is either an XML document, or an image. The HTTP return code
  * is 200 OK.
  */
-int wms_error(request_rec *r, const char *code, const char *fmt, ...)
+int wms_error(request_rec *r, int log_level, const char *code, const char *fmt, ...)
 {
     va_list ap;
     char msg[1024]; 
     va_start(ap, fmt);
     vsnprintf(msg, 1023, fmt, ap);
     msg[1023]=0;
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", msg);
+    ap_log_rerror(APLOG_MARK, log_level, 0, r, "%s", msg);
 
     char *args = r->args ? apr_pstrdup(r->pool, r->args) : 0;
     char *amp;
@@ -489,12 +491,12 @@ int wms_getmap(request_rec *r)
 
     if ((config->debug) && (!load_configured_map(r->server, config)))
     {
-        return wms_error(r, "InvalidDimensionValue", "error parsing map file");
+        return wms_error(r, APLOG_ERR, "InvalidDimensionValue", "error parsing map file");
     }
 
     if (!config->mapnik_map)
     {
-        return wms_error(r, "InvalidDimensionValue", "error parsing map file");
+        return wms_error(r, APLOG_ERR, "InvalidDimensionValue", "error parsing map file");
     }
 
     /* parse URL parameters into variables */
@@ -543,13 +545,13 @@ int wms_getmap(request_rec *r)
         current = amp + 1;
     }
 
-    if (!layers) return wms_error(r, "MissingDimensionValue", "required parameter 'layers' not set");
-    if (!srs) return wms_error(r, "MissingDimensionValue", "required parameter 'srs' not set");
-    if (!bbox) return wms_error(r, "MissingDimensionValue", "required parameter 'bbox' not set");
-    if (!width) return wms_error(r, "MissingDimensionValue", "required parameter 'width' not set");
-    if (!height) return wms_error(r, "MissingDimensionValue", "required parameter 'height' not set");
-    if (!styles) return wms_error(r, "MissingDimensionValue", "required parameter 'styles' not set");
-    if (!format) return wms_error(r, "MissingDimensionValue", "required parameter 'format' not set");
+    if (!layers) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'layers' not set", APLOG_DEBUG);
+    if (!srs) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'srs' not set");
+    if (!bbox) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'bbox' not set");
+    if (!width) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'width' not set");
+    if (!height) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'height' not set");
+    if (!styles) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'styles' not set");
+    if (!format) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'format' not set");
 
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "layers parameter: '%s'", layers);
 
@@ -557,19 +559,19 @@ int wms_getmap(request_rec *r)
     int n_height = atoi(height);
 
     if ((config->max_width && n_width > config->max_width) || (n_width < config->min_width))
-        return wms_error(r, "InvalidDimensionValue", 
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", 
             "requested width (%d) is not in range %d...%d", n_width, config->min_width, config->max_width);
     if ((config->max_height && n_height > config->max_height) || (n_height < config->min_height))
-        return wms_error(r, "InvalidDimensionValue", 
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", 
             "requested height (%d) is not in range %d...%d", n_height, config->min_height, config->max_height);
 
     if (scale < 10.0/90.0 || scale > 1200.0/90.0)
     {
-        return wms_error(r, "InvalidDimensionValue", "requested DPI is not in range 10...1200", n_height);
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", "requested DPI is not in range 10...1200", n_height);
     }
     if (quality < 10 || quality > 100)
     {
-        return wms_error(r, "InvalidDimensionValue", "requested quality is not in range 10...100", n_height);
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", "requested quality is not in range 10...100", n_height);
     }
 
     double bboxvals[4];
@@ -584,7 +586,7 @@ int wms_getmap(request_rec *r)
     }
     if (bboxcnt != 4)
     {
-        return wms_error(r, "InvalidDimensionValue", "Invalid BBOX parameter ('%s'). Must contain four comma-separated values.", bbox);
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", "Invalid BBOX parameter ('%s'). Must contain four comma-separated values.", bbox);
     }
 
     /*
@@ -601,7 +603,7 @@ int wms_getmap(request_rec *r)
         bboxvals[1] > 90 ||
         bboxvals[3] > 90)
     {
-        return wms_error(r, "InvalidDimensionValue", "Invalid BBOX parameter ('%s'). Must describe an area on earth, with minlon,minlat,maxlon,maxlat", bbox);
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", "Invalid BBOX parameter ('%s'). Must describe an area on earth, with minlon,minlat,maxlon,maxlat", bbox);
     }
     */
 
@@ -705,10 +707,10 @@ int wms_getmap(request_rec *r)
         if (k->demo)
         {
             if (config->max_demo_width && n_width > config->max_demo_width)
-                return wms_error(r, "InvalidDimensionValue", 
+                return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", 
                     "requested width (%d) is not in demo range 1...%d", n_width, config->max_demo_width);
             if (config->max_demo_height && n_height > config->max_demo_height)
-                return wms_error(r, "InvalidDimensionValue", 
+                return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", 
                     "requested height (%d) is not in demo range 1...%d", n_height, config->max_demo_height);
         }
     }
@@ -763,7 +765,7 @@ int wms_getmap(request_rec *r)
 
     if (!strlen(proj_srs_string))
     {
-        return wms_error(r, "InvalidSRS", "The given SRS ('%s') is not supported by this WMS service.", srs);
+        return wms_error(r, APLOG_DEBUG, "InvalidSRS", "The given SRS ('%s') is not supported by this WMS service.", srs);
     }
 
     using namespace mapnik;
@@ -870,7 +872,7 @@ int wms_getmap(request_rec *r)
             }
             else
             {
-                rv = wms_error(r, "InvalidFormat", "Cannot deliver requested data format ('%s')", format);
+                rv = wms_error(r, APLOG_DEBUG, "InvalidFormat", "Cannot deliver requested data format ('%s')", format);
             }
         }
 /*
@@ -948,7 +950,7 @@ extern "C"
         }
         else
         {
-            return wms_error(r, "Request type '%s' is not supported.", request);
+            return wms_error(r, APLOG_DEBUG, "Request type '%s' is not supported.", request);
         }
     }
 }
