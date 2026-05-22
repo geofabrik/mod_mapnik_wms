@@ -22,6 +22,7 @@ APLOG_USE_MODULE(mapnik_wms);
 #endif 
 #include <http_protocol.h>
 #include <apr_strings.h>
+#include <apr_time.h>
 #include <apr_pools.h>
 }
 
@@ -89,6 +90,8 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
         return OK;
     }
 
+	apr_time_t init_start = apr_time_now();
+
 	ap_log_error(APLOG_MARK, APLOG_TRACE1, 0, s, "wms_initialize start");
 
     if (!cfg->datasource_count)
@@ -141,7 +144,8 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
-	ap_log_error(APLOG_MARK, APLOG_TRACE1, 0, s, "wms_initialize OK");
+	double init_duration = (apr_time_now() - init_start)/APR_USEC_PER_SEC;
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "wms_initialize finished in %fs", init_duration);
 
     return OK;
 }
@@ -832,7 +836,8 @@ int wms_getmap(request_rec *r)
              * is worth looking out for. we will fix this to return the right image but quality
              * suffers.
              */
-            ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Start rendering (computed height is %d, requested is %d)", mymap->height(), n_height);
+			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "wms image start rendering. w=%d h=%d area=%d format=%s srs=%s layers=%s",
+					mymap->width(), mymap->height(), mymap->width()*mymap->height(), format, srs);
             ren.apply();
             ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Rendering complete");
 
@@ -867,6 +872,9 @@ int wms_getmap(request_rec *r)
             {
                 rv = wms_error(r, APLOG_DEBUG, "InvalidFormat", "Cannot deliver requested data format ('%s')", format);
             }
+
+			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "wms image sent. w=%d h=%d area=%d format=%s srs=%s layers=%s",
+					mymap->width(), mymap->height(), mymap->width()*mymap->height(), format, srs);
         }
 /*
         catch ( const mapnik::config_error & ex )
@@ -930,7 +938,7 @@ extern "C"
 
         if (!request)
         {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", "REQUEST not set - declining");
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "%s", "REQUEST not set - declining");
             return DECLINED;
         }
         else if (!strcmp(request, "GetMap"))
