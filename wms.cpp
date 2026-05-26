@@ -145,6 +145,9 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
     }
 
 	double init_duration = (apr_time_now() - init_start)/APR_USEC_PER_SEC;
+	if (init_duration > 2.0) {
+		ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s, "wms_initialize too very long! finished in %fs", init_duration);
+	}
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "wms_initialize finished in %fs", init_duration);
 
     return OK;
