@@ -22,6 +22,7 @@ APLOG_USE_MODULE(mapnik_wms);
 #endif 
 #include <http_protocol.h>
 #include <apr_strings.h>
+#include <apr_time.h>
 #include <apr_pools.h>
 }
 
@@ -73,9 +74,7 @@ bool load_configured_map(server_rec *s, struct wms_cfg *cfg)
     }
     catch (const std::exception & ex)
     {
-        ap_log_error(APLOG_MARK, APLOG_EMERG, 0, s,
-             "error initializing map: %s.", ex.what());
-        std::clog << "error loading map: " << ex.what() << std::endl;
+        ap_log_error(APLOG_MARK, APLOG_EMERG, 0, s, "error initializing map: %s.", ex.what());
         delete (mapnik::Map *) cfg->mapnik_map;
         cfg->mapnik_map = NULL;
         return false;
@@ -85,25 +84,25 @@ bool load_configured_map(server_rec *s, struct wms_cfg *cfg)
 
 int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
 {
-    if (cfg->debug)
-    {
-        std::cerr << "> " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ")" << std::endl;
-    }
 
     if (!cfg->active)
     {
         return OK;
     }
 
+	apr_time_t init_start = apr_time_now();
+
+	ap_log_error(APLOG_MARK, APLOG_TRACE1, 0, s, "wms_initialize start");
+
     if (!cfg->datasource_count)
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: datasource_count" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: datasource_count");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     if (!cfg->font_count)
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: font_count" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: font_count");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -115,18 +114,18 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
 
     if (!cfg->map)
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: map" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: map");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     if (!cfg->url)
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: url" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: url");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
     if (!cfg->title)
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: title" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: title");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -135,21 +134,21 @@ int wms_initialize(server_rec *s, struct wms_cfg *cfg, apr_pool_t *p)
     if (cfg->debug)
     {
         // will create map later
-        std::clog << "debug mode, load map file later" << std::endl;
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") OK" << std::endl;
+        ap_log_error(APLOG_MARK, APLOG_EMERG, 0, s, "debug mode, load map file later");
         return OK;
     }
 
     if (!load_configured_map(s, cfg))
     {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") Internal Server Error: load_configured_map" << std::endl;
+		ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Internal Server Error: load_configured_map");
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    if (cfg->debug)
-    {
-        std::cerr << "< " << __FILE__ << ":" << __LINE__ << " wms_initialize (" << getpid() << ") OK" << std::endl;
-    }
+	double init_duration = (apr_time_now() - init_start)/APR_USEC_PER_SEC;
+	if (init_duration > 2.0) {
+		ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s, "wms_initialize too very long! finished in %fs", init_duration);
+	}
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s, "wms_initialize finished in %fs", init_duration);
 
     return OK;
 }
@@ -197,7 +196,6 @@ int http_error(request_rec *r, int code, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(msg, 1023, fmt, ap);
     msg[1023]=0;
-    std::clog << msg << std::endl;
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", msg);
     ap_set_content_type(r, "text/plain");
     ap_rputs(msg, r);
@@ -209,15 +207,14 @@ int http_error(request_rec *r, int code, const char *fmt, ...)
  * This is either an XML document, or an image. The HTTP return code
  * is 200 OK.
  */
-int wms_error(request_rec *r, const char *code, const char *fmt, ...)
+int wms_error(request_rec *r, int log_level, const char *code, const char *fmt, ...)
 {
     va_list ap;
     char msg[1024]; 
     va_start(ap, fmt);
     vsnprintf(msg, 1023, fmt, ap);
     msg[1023]=0;
-    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", msg);
-    std::clog << msg << std::endl;
+    ap_log_rerror(APLOG_MARK, log_level, 0, r, "%s", msg);
 
     char *args = r->args ? apr_pstrdup(r->pool, r->args) : 0;
     char *amp;
@@ -487,16 +484,6 @@ int wms_getmap(request_rec *r)
 
     bool end = (args == 0);
 
-    FILE *f = fopen(config->logfile, "a");
-    std::streambuf *old = NULL;
-    logbuffer *o = NULL;
-    if (f)
-    {
-        o = new logbuffer(f);
-        old = std::clog.rdbuf();
-        std::clog.rdbuf(o);
-    }
-
     /* 
      * in debug mode, the map is loaded/parsed for each request. that makes
      * it easier to make changes (no apache restart required)
@@ -504,12 +491,12 @@ int wms_getmap(request_rec *r)
 
     if ((config->debug) && (!load_configured_map(r->server, config)))
     {
-        return wms_error(r, "InvalidDimensionValue", "error parsing map file");
+        return wms_error(r, APLOG_ERR, "InvalidDimensionValue", "error parsing map file");
     }
 
     if (!config->mapnik_map)
     {
-        return wms_error(r, "InvalidDimensionValue", "error parsing map file");
+        return wms_error(r, APLOG_ERR, "InvalidDimensionValue", "error parsing map file");
     }
 
     /* parse URL parameters into variables */
@@ -558,33 +545,33 @@ int wms_getmap(request_rec *r)
         current = amp + 1;
     }
 
-    if (!layers) return wms_error(r, "MissingDimensionValue", "required parameter 'layers' not set");
-    if (!srs) return wms_error(r, "MissingDimensionValue", "required parameter 'srs' not set");
-    if (!bbox) return wms_error(r, "MissingDimensionValue", "required parameter 'bbox' not set");
-    if (!width) return wms_error(r, "MissingDimensionValue", "required parameter 'width' not set");
-    if (!height) return wms_error(r, "MissingDimensionValue", "required parameter 'height' not set");
-    if (!styles) return wms_error(r, "MissingDimensionValue", "required parameter 'styles' not set");
-    if (!format) return wms_error(r, "MissingDimensionValue", "required parameter 'format' not set");
+    if (!layers) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'layers' not set", APLOG_DEBUG);
+    if (!srs) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'srs' not set");
+    if (!bbox) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'bbox' not set");
+    if (!width) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'width' not set");
+    if (!height) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'height' not set");
+    if (!styles) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'styles' not set");
+    if (!format) return wms_error(r, APLOG_DEBUG, "MissingDimensionValue", "required parameter 'format' not set");
 
-    std::clog << "layers parameter: '" << layers << "'" << std::endl;
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "layers parameter: '%s'", layers);
 
     int n_width = atoi(width);
     int n_height = atoi(height);
 
     if ((config->max_width && n_width > config->max_width) || (n_width < config->min_width))
-        return wms_error(r, "InvalidDimensionValue", 
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", 
             "requested width (%d) is not in range %d...%d", n_width, config->min_width, config->max_width);
     if ((config->max_height && n_height > config->max_height) || (n_height < config->min_height))
-        return wms_error(r, "InvalidDimensionValue", 
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", 
             "requested height (%d) is not in range %d...%d", n_height, config->min_height, config->max_height);
 
     if (scale < 10.0/90.0 || scale > 1200.0/90.0)
     {
-        return wms_error(r, "InvalidDimensionValue", "requested DPI is not in range 10...1200", n_height);
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", "requested DPI is not in range 10...1200", n_height);
     }
     if (quality < 10 || quality > 100)
     {
-        return wms_error(r, "InvalidDimensionValue", "requested quality is not in range 10...100", n_height);
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", "requested quality is not in range 10...100", n_height);
     }
 
     double bboxvals[4];
@@ -599,7 +586,7 @@ int wms_getmap(request_rec *r)
     }
     if (bboxcnt != 4)
     {
-        return wms_error(r, "InvalidDimensionValue", "Invalid BBOX parameter ('%s'). Must contain four comma-separated values.", bbox);
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", "Invalid BBOX parameter ('%s'). Must contain four comma-separated values.", bbox);
     }
 
     /*
@@ -616,7 +603,7 @@ int wms_getmap(request_rec *r)
         bboxvals[1] > 90 ||
         bboxvals[3] > 90)
     {
-        return wms_error(r, "InvalidDimensionValue", "Invalid BBOX parameter ('%s'). Must describe an area on earth, with minlon,minlat,maxlon,maxlat", bbox);
+        return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", "Invalid BBOX parameter ('%s'). Must describe an area on earth, with minlon,minlat,maxlon,maxlat", bbox);
     }
     */
 
@@ -633,7 +620,7 @@ int wms_getmap(request_rec *r)
         // then kill layer selection and return everything.
         if  (!strcmp(token, config->top_layer_name))
         {
-            std::clog << "layermap clear, found top-level layer '" << token << "'" << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layermap clear, found top-level layer '%s'", token);
             layermap.clear();
             break;
         }
@@ -641,19 +628,19 @@ int wms_getmap(request_rec *r)
         // if the layer refers to a layer group handle,
         // add all members of that layer group
         transparency_allowed = true;
-	std::clog << "layermap handle token '" << token << "'" << std::endl;
+		ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layermap handle token '%s'", token);
         for (struct layer_group *lg = config->first_layer_group; lg; lg = lg->next)
         {
             if (!strcmp(token, lg->grouphandle))
             {
-	        std::clog << "-> found group handle" << std::endl;
+				ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "-> found group handle");
                 char *saveptr2;
                 char *dup2 = apr_pstrdup(r->pool, lg->sublayers);
                 const char *token2 = strtok_r(dup2, ",", &saveptr2);
                 while (token2)
                 {
                     layermap.insert(token2);
-		    std::clog << "   -> layermap insert" << token2 << std::endl;
+					ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "   -> layermap insert %s", token2);
                     token2 = strtok_r(NULL, ",", &saveptr2);
                 }
                 token = NULL;
@@ -667,9 +654,9 @@ int wms_getmap(request_rec *r)
 
         token = strtok_r(NULL, ",", &saveptr1);
     }
-    std::clog << "layermap end processing" << std::endl;
+	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layermap end processing");
     
-    std::clog << "NEW REQUEST: " << r->the_request << std::endl;
+	ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "NEW REQUEST: %s", r->the_request);
 
     char *type;
     char *customer_id;
@@ -679,7 +666,7 @@ int wms_getmap(request_rec *r)
     {
         if (strncmp(r->uri, config->prefix, strlen(config->prefix)))
         {
-            std::clog << "uri '" << r->uri << "' does not begin with configured prefix '" << config->prefix << "'" << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "uri '%s' does not begin with configured prefix '%s'", r->uri, config->prefix);
             return http_error(r, HTTP_NOT_FOUND, "Not Found", exceptions);
         }
     }
@@ -694,7 +681,7 @@ int wms_getmap(request_rec *r)
     if (config->key_db)
     {
         user_key = apr_pstrdup(r->pool, r->uri + 1 + (config->prefix ? strlen(config->prefix) : 0));
-        std::clog << "checking key '" << user_key << "' extracted from URI '" << r->uri << "'" << std::endl;
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "checking key '%s' extracted from URI '%s'", user_key, r->uri);
         char *delim = strpbrk(user_key, "/?");
         if (delim) 
         {
@@ -713,17 +700,17 @@ int wms_getmap(request_rec *r)
 
         if (!k)
         {
-            std::clog << "key " << user_key << " not configured" << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "key %s not configured", user_key);
             return http_error(r, HTTP_FORBIDDEN, "Key not known", exceptions);
         }
 
         if (k->demo)
         {
             if (config->max_demo_width && n_width > config->max_demo_width)
-                return wms_error(r, "InvalidDimensionValue", 
+                return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", 
                     "requested width (%d) is not in demo range 1...%d", n_width, config->max_demo_width);
             if (config->max_demo_height && n_height > config->max_demo_height)
-                return wms_error(r, "InvalidDimensionValue", 
+                return wms_error(r, APLOG_DEBUG, "InvalidDimensionValue", 
                     "requested height (%d) is not in demo range 1...%d", n_height, config->max_demo_height);
         }
     }
@@ -754,7 +741,7 @@ int wms_getmap(request_rec *r)
         if (!strncasecmp(config->srs_def[i], srscmp, strlen(srscmp)))
         {
             strcpy(proj_srs_string, config->srs_def[i] + strlen(srscmp));
-            std::clog << "setting custom SRS " << srs << " to: " << proj_srs_string << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "setting custom SRS %s to %s", srs, proj_srs_string);
         }
     }
 
@@ -769,7 +756,8 @@ int wms_getmap(request_rec *r)
             if (!strncasecmp(config->key_srs_def[i], srscmp, strlen(srscmp)))
             {
                 strcpy(proj_srs_string, config->key_srs_def[i] + strlen(srscmp));
-                std::clog << "setting custom SRS for key " << user_key << " SRS " << srs << " to: " << proj_srs_string << std::endl;
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "layers parameter: '%s'", layers);
+				ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "setting custom SRS for key %s SRS %s to: %s", user_key, srs , proj_srs_string);
             }
         }
     }
@@ -777,7 +765,7 @@ int wms_getmap(request_rec *r)
 
     if (!strlen(proj_srs_string))
     {
-        return wms_error(r, "InvalidSRS", "The given SRS ('%s') is not supported by this WMS service.", srs);
+        return wms_error(r, APLOG_DEBUG, "InvalidSRS", "The given SRS ('%s') is not supported by this WMS service.", srs);
     }
 
     using namespace mapnik;
@@ -791,7 +779,7 @@ int wms_getmap(request_rec *r)
     {
         try 
         {
-            std::clog << "Configuring map parameters" << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Configuring map parameters");
             mymap->set_srs(proj_srs_string);
             mymap->zoom_to_box(box2d<double>(bboxvals[0], bboxvals[1], bboxvals[2], bboxvals[3]));
             mymap->resize(n_width, n_height);
@@ -800,13 +788,13 @@ int wms_getmap(request_rec *r)
 
             if (transparent && !strcasecmp(transparent, "true") && transparency_allowed)
             {
-                std::clog << "transparent" << std::endl;
+				ap_log_rerror(APLOG_MARK, APLOG_TRACE2, 0, r, "transparent");
                 oldbackground = mymap->background();
                 mymap->set_background(mapnik::color(0,0,0,0));
             }
             else if (bgcolor && strlen(bgcolor)>2)
             {
-                std::clog << "bgcolor=" << bgcolor << std::endl;
+				ap_log_rerror(APLOG_MARK, APLOG_TRACE2, 0, r, "bgcolor=%s", bgcolor);
                 if (!strncmp("0x", bgcolor, 2))
                 {
                     bgcolor += 2;
@@ -829,17 +817,17 @@ int wms_getmap(request_rec *r)
                 if (layermap.empty())
 		{
                    i->set_active(true);
-		   std::clog << "layer enable " << i->name() << " (empty layermap)" << std::endl;
+				   ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layer enable %s (empty layermap)", i->name().c_str());
 		}
 		else if (layermap.find(i->name()) != layermap.end())
 		{
                    i->set_active(true);
-		   std::clog << "layer disable " << i->name() << " (present in layermap)" << std::endl;
+		   ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layer disable %s (present in layermap)", i->name().c_str());
 		}
 		else
 		{
                    i->set_active(false);
-		   std::clog << "layer disable " << i->name() << " (not in layermap)" << std::endl;
+		   ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "layer disable %s (not in layermap)", i->name().c_str());
 		}
             }
 
@@ -851,9 +839,10 @@ int wms_getmap(request_rec *r)
              * is worth looking out for. we will fix this to return the right image but quality
              * suffers.
              */
-            std::clog << "Start rendering (computed height is " << mymap->height() << ", requested is " << n_height << ")" << std::endl;
+			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "wms image start rendering. w=%d h=%d area=%d format=%s srs=%s layers=%s",
+					mymap->width(), mymap->height(), mymap->width()*mymap->height(), format, srs);
             ren.apply();
-            std::clog << "Rendering complete" << std::endl;
+            ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Rendering complete");
 
             if (oldbackground) mymap->set_background(oldbackground.get());
             
@@ -862,30 +851,33 @@ int wms_getmap(request_rec *r)
             if (!strcmp(format, "image/png"))
             {
                 ap_set_content_type(r, "image/png");
-                std::clog << "Start streaming PNG response" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Start streaming PNG response");
                 send_image_response(r, buf, n_height, "png32");
-                std::clog << "PNG response complete" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "PNG response complete");
             }
             else if (!strcmp(format, "image/png8"))
             {
                 ap_set_content_type(r, "image/png");
-                std::clog << "Start streaming PNG response (palette image)" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Start streaming PNG response (palette image)");
                 send_image_response(r, buf, n_height, "png8");
-                std::clog << "PNG response complete" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "PNG response complete");
             }
             else if (!strcmp(format, "image/jpeg"))
             {
                 char typespec[20];
                 snprintf(typespec, 20, "jpeg%d", quality);
                 ap_set_content_type(r, "image/jpeg");
-                std::clog << "Start streaming JPEG response" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Start streaming JPEG response");
                 send_image_response(r, buf, n_height, typespec);
-                std::clog << "JPEG response complete" << std::endl;
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "JPEG response complete");
             }
             else
             {
-                rv = wms_error(r, "InvalidFormat", "Cannot deliver requested data format ('%s')", format);
+                rv = wms_error(r, APLOG_DEBUG, "InvalidFormat", "Cannot deliver requested data format ('%s')", format);
             }
+
+			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "wms image sent. w=%d h=%d area=%d format=%s srs=%s layers=%s",
+					mymap->width(), mymap->height(), mymap->width()*mymap->height(), format, srs);
         }
 /*
         catch ( const mapnik::config_error & ex )
@@ -902,14 +894,6 @@ int wms_getmap(request_rec *r)
             rv = http_error(r, HTTP_INTERNAL_SERVER_ERROR, "other exception");
         }
         if (attempts) ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "re-trying...");
-    }
-
-    // reset clog stream
-    if (old) 
-    {
-        std::clog.rdbuf(old);
-        delete o;
-        fclose(f);
     }
 
     if (config->debug) delete (mapnik::Map *) config->mapnik_map;
@@ -957,8 +941,7 @@ extern "C"
 
         if (!request)
         {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", "REQUEST not set - declining");
-            std::clog << "REQUEST not set - declining" << std::endl;
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "%s", "REQUEST not set - declining");
             return DECLINED;
         }
         else if (!strcmp(request, "GetMap"))
@@ -971,7 +954,7 @@ extern "C"
         }
         else
         {
-            return wms_error(r, "Request type '%s' is not supported.", request);
+            return wms_error(r, APLOG_DEBUG, "Request type '%s' is not supported.", request);
         }
     }
 }

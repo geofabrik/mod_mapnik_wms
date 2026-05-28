@@ -15,7 +15,6 @@
     MapnikFonts /usr/share/fonts/truetype/ttf-dejavu//DejaVuSans.ttf
     MapnikFonts /usr/share/fonts/truetype/ttf-dejavu//DejaVuSans-Oblique.ttf
     MapnikMap /etc/mapnik-osm-data/wms.xml
-    MapnikLog /tmp/mapnik.log
 
     WmsSrs EPSG:4326
     WmsTitle "Geofabrik Test Server"

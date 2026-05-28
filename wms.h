@@ -51,7 +51,6 @@ struct wms_cfg {
     int include_sub_layers; 
     int initialized;
     void *mapnik_map;
-    const char *logfile;
     struct wms_key *key_db;
     int max_width;
     int max_height;

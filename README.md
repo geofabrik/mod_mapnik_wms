@@ -81,7 +81,6 @@ The mod\_mapnik\_wms-specific configuration options are:
 
 | Option | Default | Use |
 |--------|---------|-----|
-| `MapnikLog` | none | File to redirect the "clog" stream to. |
 | `MapnikDatasources` | none (required) | Path to Mapnik data source modules (plugins), usually `/usr/lib/mapnik/input`. May occur more than once. |
 | `MapnikFonts` | none (required) | Path to one font file used in map files. May occur more than once. mod\_mapnik\_wms cannot recurse a font directory - each font has to be specified separately. |
 | `MapnikMap` | none (required) | Path to the map file (mapnik XML file). Currently only one is supported. |
@@ -93,6 +92,27 @@ The mod\_mapnik\_wms-specific configuration options are:
 | `WmsExtentMinLon`, `WmsExtentMaxLon`, `WmsExtentMinLat`, `WmsExtentMaxLat` | -179.9999, -89.999, 179.9999, 89.999 | The data bounding box to be published in the capabilities document |
 | `WmsMaxWidth`, `WmsMaxHeight`, `WmsMinWidth`, `WmsMinHeight` | 1 for min, none for max | The allowed image size range for WMS requests (in pixels) |
 | `WmsDefaultDpi` | 90 | Default resolution (when not explicitly requested by the client). |
+
+### Logging
+
+This module will using Apache's Logging Framework. Log message from this module
+will be in the Error log. The [default LogLevel
+(`warn`)](https://httpd.apache.org/docs/2.4/mod/core.html#loglevel) causes no
+log messages from this module, except errors. Enable logging for this module with:
+
+    LogLevel warn mapnik_wms_module:info
+
+The old `MapnikLog` setting & functionality has been removed.
+
+Unfortunately the global server error log will often be spammed by mapnik. e.g.:
+
+    Mapnik LOG> 2026-05-21 13:18:04: warning: unable to find face-name 'Unifont Medium' in FontSet 'fontset-0'
+
+Some server errors (such as if the map image fails to be generated) will be
+sent as an image to the client (with an error message rendered in the image),
+and with a HTTP 200 status code. If it's a real server side error, an apache
+ERROR message will be logged. With default Apache `LogLevel` setting this will
+be included.
 
 ## Map Style
 
